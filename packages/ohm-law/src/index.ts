@@ -5,7 +5,5 @@ export { SQRT3, DEFAULT_RATE_PER_KWH } from "./constants";
 export { solveOhmsWheel } from "./engine/ohms-wheel";
 export { solveAcPower } from "./engine/ac-power";
 export { solvePowerTriangle } from "./engine/power-triangle";
-
-// Solvers are exported as each is implemented (Phase 6):
-//   export { solveEnergyCost } from "./engine/energy-cost";
-//   export { solveEfficiency } from "./engine/efficiency";
+export { solveEnergyCost } from "./engine/energy-cost";
+export { solveEfficiency } from "./engine/efficiency";
