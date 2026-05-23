@@ -1,0 +1,114 @@
+[
+  {
+    "calc": "ohms-wheel",
+    "name": "120 V across 10 Ω => 12 A / 1440 W",
+    "_arithmetic": "I=V/R=120/10=12; P=V·I=120·12=1440",
+    "input": { "volts": 120, "ohms": 10 },
+    "expect": { "amps": 12, "watts": 1440 },
+    "tol": 0.0001
+  },
+  {
+    "calc": "ohms-wheel",
+    "name": "12 A & 1440 W => 120 V / 10 Ω",
+    "_arithmetic": "V=P/I=1440/12=120; R=P/I²=1440/144=10",
+    "input": { "amps": 12, "watts": 1440 },
+    "expect": { "volts": 120, "ohms": 10 },
+    "tol": 0.0001
+  },
+  {
+    "calc": "ohms-wheel",
+    "name": "240 V & 20 A => 12 Ω / 4800 W",
+    "_arithmetic": "R=240/20=12; P=240·20=4800",
+    "input": { "volts": 240, "amps": 20 },
+    "expect": { "ohms": 12, "watts": 4800 },
+    "tol": 0.0001
+  },
+  {
+    "calc": "ac-power",
+    "name": "1Ø 240 V, 30 A, PF 1 => 7.2 kVA / 7.2 kW",
+    "_arithmetic": "S=1·240·30=7200 VA=7.2 kVA; P=S·1=7.2 kW",
+    "input": { "phase": 1, "volts": 240, "amps": 30, "powerFactor": 1 },
+    "expect": { "kva": 7.2, "kw": 7.2 },
+    "tol": 0.001
+  },
+  {
+    "calc": "ac-power",
+    "name": "3Ø 480 V, 100 A, PF 0.85 => 83.138 kVA / 70.678 kW",
+    "_arithmetic": "S=√3·480·100=83138.4 VA=83.1384 kVA; P=S·0.85=70.6776 kW",
+    "input": { "phase": 3, "volts": 480, "amps": 100, "powerFactor": 0.85 },
+    "expect": { "kva": 83.1384, "kw": 70.6677 },
+    "tol": 0.01
+  },
+  {
+    "calc": "ac-power",
+    "name": "3Ø 208 V, 50 A, PF 0.9 => 18.013 kVA / 16.212 kW",
+    "_arithmetic": "S=√3·208·50=18013.33 VA=18.01333 kVA; P=S·0.9=16.212 kW",
+    "input": { "phase": 3, "volts": 208, "amps": 50, "powerFactor": 0.9 },
+    "expect": { "kva": 18.0133, "kw": 16.212 },
+    "tol": 0.01
+  },
+  {
+    "calc": "ac-power",
+    "name": "3Ø solve amps from 83.1384 kVA & 480 V => 100 A",
+    "_arithmetic": "I=S/(√3·V)=83138.4/(1.7320508·480)=100",
+    "input": { "phase": 3, "volts": 480, "kva": 83.1384 },
+    "expect": { "amps": 100 },
+    "tol": 0.01
+  },
+  {
+    "calc": "power-triangle",
+    "name": "P 80 kW, S 100 kVA => PF 0.8, Q 60 kVAR, θ 36.87°",
+    "_arithmetic": "PF=80/100=0.8; Q=√(100²−80²)=60; θ=acos(0.8)=36.8699°",
+    "input": { "kw": 80, "kva": 100 },
+    "expect": { "pf": 0.8, "kvar": 60, "angleDeg": 36.8699 },
+    "tol": 0.01
+  },
+  {
+    "calc": "power-triangle",
+    "name": "P 80 kW, Q 60 kVAR => S 100 kVA, PF 0.8",
+    "_arithmetic": "S=√(80²+60²)=100; PF=80/100=0.8",
+    "input": { "kw": 80, "kvar": 60 },
+    "expect": { "kva": 100, "pf": 0.8 },
+    "tol": 0.001
+  },
+  {
+    "calc": "power-triangle",
+    "name": "S 50 kVA, PF 0.8 => P 40 kW, Q 30 kVAR",
+    "_arithmetic": "P=50·0.8=40; Q=√(50²−40²)=30",
+    "input": { "kva": 50, "pf": 0.8 },
+    "expect": { "kw": 40, "kvar": 30 },
+    "tol": 0.001
+  },
+  {
+    "calc": "energy-cost",
+    "name": "5 kW × 8 h × $0.12 => 40 kWh / $4.80",
+    "_arithmetic": "kWh=5·8=40; cost=40·0.12=4.80",
+    "input": { "kw": 5, "hours": 8, "ratePerKwh": 0.12 },
+    "expect": { "kwh": 40, "cost": 4.8 },
+    "tol": 0.0001
+  },
+  {
+    "calc": "energy-cost",
+    "name": "10 kW × 24 h × $0.15 => 240 kWh / $36",
+    "_arithmetic": "kWh=10·24=240; cost=240·0.15=36",
+    "input": { "kw": 10, "hours": 24, "ratePerKwh": 0.15 },
+    "expect": { "kwh": 240, "cost": 36 },
+    "tol": 0.0001
+  },
+  {
+    "calc": "efficiency",
+    "name": "1800 W out / 2000 W in => 0.90",
+    "_arithmetic": "η=1800/2000=0.9",
+    "input": { "pOutW": 1800, "pInW": 2000 },
+    "expect": { "efficiency": 0.9 },
+    "tol": 0.0001
+  },
+  {
+    "calc": "efficiency",
+    "name": "1000 W in at η 0.85 => 850 W out",
+    "_arithmetic": "P_out=0.85·1000=850",
+    "input": { "pInW": 1000, "efficiency": 0.85 },
+    "expect": { "pOutW": 850 },
+    "tol": 0.0001
+  }
+]
