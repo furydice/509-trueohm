@@ -1,0 +1,150 @@
+/* ── TrueOhm-specific additions on top of the suite global.css ─────────── */
+
+/* Five-mode switcher — horizontally scrollable so full labels fit on phone */
+.to-mode-switcher {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.to-mode-switcher::-webkit-scrollbar {
+  display: none;
+}
+.to-mode-switcher button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-muted);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.to-mode-switcher button.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Secondary result rows under the hero */
+.to-result-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+.to-result-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 7px 0;
+}
+.to-result-row:last-child {
+  border-bottom: 0;
+}
+.to-result-row .to-rl {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.to-result-row .to-rv {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+}
+.to-result-row .to-rv em {
+  margin-left: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: normal;
+}
+.to-result-row.computed .to-rv {
+  color: var(--accent-text);
+}
+
+/* "Show your work" step lines (formula + substitution) */
+.show-work-step {
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 7px 10px;
+}
+.show-work-step + .show-work-step {
+  margin-top: 6px;
+}
+.show-work-step code {
+  display: block;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.show-work-step .sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Hint under the inputs */
+.to-input-hint {
+  margin: 10px 2px 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Footer: disclaimer + More 509 Tools */
+.to-footer {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+.to-disclaimer {
+  margin: 0 0 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.to-more-tools {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: inherit;
+  padding: 13px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.to-more-tools strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 900;
+}
+.to-more-tools small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.to-more-tools .to-more-arrow {
+  color: var(--text-dim);
+}
+
+/* Phase toggle row label spacing reuse from .vd-toggle-row */
