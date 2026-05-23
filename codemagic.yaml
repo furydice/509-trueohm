@@ -1,0 +1,138 @@
+workflows:
+  trueohm-readonly-audit:
+    name: TrueOhm Read-only Audit
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    labels:
+      - github
+      - readonly
+      - trueohm
+    environment:
+      xcode: latest
+      node: 24
+      cocoapods: default
+      vars:
+        PNPM_STORE_PATH: $CM_BUILD_DIR/.pnpm-store
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/.pnpm-store
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: '*'
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Install pnpm and dependencies
+        script: |
+          npm install --global pnpm@9.15.9
+          pnpm config set store-dir "$PNPM_STORE_PATH"
+          pnpm install --frozen-lockfile
+      - name: Lint, typecheck, test, and build web
+        script: |
+          set -euo pipefail
+          pnpm lint
+          pnpm -r typecheck
+          pnpm -r test
+          pnpm --filter @509-trueohm/web build
+      - name: Sync Capacitor iOS target
+        script: |
+          set -euo pipefail
+          cd apps/web
+          npx cap sync ios
+
+  trueohm-ios-testflight:
+    name: TrueOhm iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    labels:
+      - github
+      - ios
+      - testflight
+      - trueohm
+    integrations:
+      app_store_connect: Codemagic_ASC_API
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.fiveohninelectric.trueohm
+      vars:
+        # TODO: Set APP_STORE_APPLE_ID to the numeric App Store Connect app id
+        # once the TrueOhm app record is created in ASC.
+        # APP_STORE_APPLE_ID: ''
+        BUNDLE_ID: com.fiveohninelectric.trueohm
+        XCODE_PROJECT: apps/web/ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+        PNPM_STORE_PATH: $CM_BUILD_DIR/.pnpm-store
+      xcode: latest
+      node: 24
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/.pnpm-store
+        - $HOME/Library/Caches/CocoaPods
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Install pnpm and dependencies
+        script: |
+          npm install --global pnpm@9.15.9
+          pnpm config set store-dir "$PNPM_STORE_PATH"
+          pnpm install --frozen-lockfile
+      - name: Lint, typecheck, test, and build web
+        script: |
+          set -euo pipefail
+          pnpm lint
+          pnpm -r typecheck
+          pnpm -r test
+          pnpm --filter @509-trueohm/web build
+      - name: Sync Capacitor iOS target
+        script: |
+          set -euo pipefail
+          cd apps/web
+          npx cap sync ios
+      - name: Require App Store Connect app id
+        script: |
+          # TODO: Uncomment this guard once APP_STORE_APPLE_ID is set above.
+          # : "${APP_STORE_APPLE_ID:?Set APP_STORE_APPLE_ID in codemagic.yaml or Codemagic environment variables.}"
+          echo "APP_STORE_APPLE_ID guard: skipped until ASC app record exists"
+      - name: Set up provisioning profiles
+        script: |
+          # Automatic signing: upload the distribution provisioning profile to
+          # Codemagic's Code Signing Identities store ("Fetch profiles") before
+          # triggering a build. xcode-project use-profiles reads it from there.
+          xcode-project use-profiles
+      - name: Set build number
+        script: |
+          set -euo pipefail
+          PROJECT_FILE="apps/web/ios/App/App.xcodeproj/project.pbxproj"
+          INFO_PLIST="apps/web/ios/App/App/Info.plist"
+          APP_BUILD_NUMBER="${PROJECT_BUILD_NUMBER:-${BUILD_NUMBER:-1}}"
+          export APP_BUILD_NUMBER
+          perl -0pi -e 's/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = $ENV{APP_BUILD_NUMBER};/g' "$PROJECT_FILE"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD_NUMBER" "$INFO_PLIST"
+          echo "Set iOS CFBundleVersion to $APP_BUILD_NUMBER"
+      - name: Build signed IPA
+        script: |
+          set -euo pipefail
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - apps/web/ios/App/build/**/*.xcresult
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        expire_build_submitted_for_review: true
+        submit_to_app_store: false
