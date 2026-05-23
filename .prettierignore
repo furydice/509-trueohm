@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.turbo/
+scripts/.release/
+pnpm-lock.yaml
+
+# Capacitor-generated native/web assets are validated by preflights instead.
+apps/ios/App/App/public/
+apps/ios/App/App/Assets.xcassets/
+apps/ios/App/App/capacitor.config.json
