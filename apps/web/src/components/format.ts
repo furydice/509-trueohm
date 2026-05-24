@@ -12,3 +12,9 @@ export function fmt(n: number | undefined): string {
   if (Number.isInteger(n)) return n.toLocaleString();
   return Number(n.toFixed(3)).toLocaleString(undefined, { maximumFractionDigits: 3 });
 }
+
+/** Format a dollar value — always shows exactly 2 decimal places. */
+export function fmtCurrency(n: number | undefined): string {
+  if (n === undefined || !Number.isFinite(n)) return "—";
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

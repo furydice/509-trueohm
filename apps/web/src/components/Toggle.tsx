@@ -19,6 +19,7 @@ export function Toggle<T extends string | number>({
           key={String(opt.value)}
           type="button"
           className={value === opt.value ? "selected" : ""}
+          aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
         >
           <span>{opt.label}</span>

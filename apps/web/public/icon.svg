@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#15130f"/>
+  <!-- Ω arch: thick-stroked open circle -->
+  <path d="M168 348 A136 136 0 1 1 344 348"
+        fill="none" stroke="#ffc53d" stroke-width="48" stroke-linecap="butt"/>
+  <!-- Left foot -->
+  <rect x="104" y="324" width="112" height="48" fill="#ffc53d"/>
+  <!-- Right foot -->
+  <rect x="296" y="324" width="112" height="48" fill="#ffc53d"/>
+</svg>

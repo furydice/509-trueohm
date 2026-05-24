@@ -2,7 +2,7 @@ import { useState } from "react";
 import { solveEnergyCost, DEFAULT_RATE_PER_KWH } from "@509-trueohm/ohm-law";
 import { Field } from "../components/Field";
 import { ResultCard, type ResultRow } from "../components/ResultCard";
-import { toNum } from "../components/format";
+import { toNum, fmtCurrency } from "../components/format";
 
 export function EnergyCostScreen(): JSX.Element {
   const [kw, setKw] = useState("5");
@@ -10,8 +10,8 @@ export function EnergyCostScreen(): JSX.Element {
   const [rate, setRate] = useState("0.12");
 
   const r = solveEnergyCost({
-    kw: toNum(kw) ?? NaN,
-    hours: toNum(hours) ?? NaN,
+    kw: toNum(kw) ?? 0,
+    hours: toNum(hours) ?? 0,
     ratePerKwh: toNum(rate),
   });
 
@@ -24,7 +24,7 @@ export function EnergyCostScreen(): JSX.Element {
     <div className="calculator-screen">
       <ResultCard
         label="Cost"
-        hero={{ value: r.cost, unit: "", prefix: "$" }}
+        hero={{ value: r.cost, unit: "", prefix: "$", format: fmtCurrency }}
         rows={rows}
         work={r.work}
         warnings={r.warnings}

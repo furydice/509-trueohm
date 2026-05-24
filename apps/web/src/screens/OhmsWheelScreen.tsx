@@ -28,7 +28,7 @@ export function OhmsWheelScreen(): JSX.Element {
     <div className="calculator-screen">
       <ResultCard
         label="Power"
-        hero={{ value: r.watts, unit: "W" }}
+        hero={{ value: r.watts, unit: "watts" }}
         rows={rows}
         work={r.work}
         warnings={r.warnings}

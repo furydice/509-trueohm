@@ -13,23 +13,34 @@ export interface ResultRow {
 
 interface ResultCardProps {
   label: string;
-  hero: { value: number; unit: string; prefix?: string };
+  hero: { value: number; unit: string; prefix?: string; format?: (n: number | undefined) => string };
   rows: ResultRow[];
   work: Work[];
   warnings: Warning[];
 }
 
+/** Pick a hero font size that keeps the number from overflowing the card. */
+function heroFontSize(text: string): string {
+  const len = text.length;
+  if (len <= 6) return "4rem";
+  if (len <= 8) return "3rem";
+  if (len <= 11) return "2.2rem";
+  return "1.6rem";
+}
+
 /** Shared result card: hero number, secondary rows, show-your-work, warnings. */
 export function ResultCard({ label, hero, rows, work, warnings }: ResultCardProps): JSX.Element {
+  const heroFmt = hero.format ?? fmt;
+  const heroText = `${hero.prefix ?? ""}${heroFmt(hero.value)}`;
   return (
     <div className="vd-result-card">
       <div className="vd-result-header">
         <span className="vd-result-label">{label}</span>
       </div>
       <div className="vd-result-hero">
-        <span className="vd-result-number">
+        <span className="vd-result-number" style={{ fontSize: heroFontSize(heroText) }}>
           {hero.prefix}
-          {fmt(hero.value)}
+          {heroFmt(hero.value)}
         </span>
         {hero.unit ? <span className="vd-result-unit">{hero.unit}</span> : null}
       </div>

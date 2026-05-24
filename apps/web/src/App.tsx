@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./styles/global.css";
 import "./styles/trueohm.css";
 import { OhmsWheelScreen } from "./screens/OhmsWheelScreen";
@@ -6,6 +6,8 @@ import { AcPowerScreen } from "./screens/AcPowerScreen";
 import { PowerTriangleScreen } from "./screens/PowerTriangleScreen";
 import { EnergyCostScreen } from "./screens/EnergyCostScreen";
 import { EfficiencyScreen } from "./screens/EfficiencyScreen";
+import { ToolsScreen } from "./screens/ToolsScreen";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 type ThemeMode = "dark" | "light";
 type ModeId = "ohms" | "ac" | "triangle" | "energy" | "eff";
@@ -80,6 +82,21 @@ export function App(): JSX.Element {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
   const [showDeviceChrome] = useState(shouldShowDeviceChrome);
   const [mode, setMode] = useState<ModeId>("ohms");
+  const [showTools, setShowTools] = useState(false);
+  const switcherRef = useRef<HTMLDivElement>(null);
+
+  /** Scroll the selected tab into view when mode changes. */
+  const scrollSelectedTab = useCallback(() => {
+    const container = switcherRef.current;
+    if (!container) return;
+    const selected = container.querySelector<HTMLElement>(".selected");
+    if (!selected) return;
+    selected.scrollIntoView?.({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, []);
+
+  useEffect(() => {
+    scrollSelectedTab();
+  }, [mode, scrollSelectedTab]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -88,6 +105,13 @@ export function App(): JSX.Element {
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", theme === "light" ? "#f3eee4" : "#0b0b0d");
   }, [theme]);
+
+  /** Enable theme-switch CSS transitions after the first paint (avoids FOUC). */
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      document.documentElement.classList.add("theme-ready");
+    });
+  }, []);
 
   function toggleTheme(): void {
     setTheme((current) => {
@@ -112,6 +136,13 @@ export function App(): JSX.Element {
       <div className="screen-stack">
         <header className="home-topbar">
           <div className="brand-lockup">
+            <img
+              src="/icon.svg"
+              alt=""
+              width={32}
+              height={32}
+              style={{ borderRadius: 8 }}
+            />
             <h1>
               True<span style={{ color: "var(--accent)" }}>Ohm</span>
             </h1>
@@ -127,39 +158,46 @@ export function App(): JSX.Element {
           </button>
         </header>
 
-        <div className="to-mode-switcher" role="group" aria-label="Calculator mode">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={mode === m.id ? "selected" : ""}
-              aria-pressed={mode === m.id}
-              onClick={() => setMode(m.id)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+        {showTools ? (
+          <ToolsScreen onBack={() => setShowTools(false)} />
+        ) : (
+          <>
+            <div className="to-mode-switcher" role="group" aria-label="Calculator mode" ref={switcherRef}>
+              {MODES.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={mode === m.id ? "selected" : ""}
+                  aria-pressed={mode === m.id}
+                  onClick={() => setMode(m.id)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
 
-        {renderScreen(mode)}
+            <ErrorBoundary key={mode}>
+              {renderScreen(mode)}
+            </ErrorBoundary>
 
-        <footer className="to-footer">
-          <p className="to-disclaimer">A calculation aid for qualified professionals.</p>
-          <a
-            className="to-more-tools"
-            href="https://509electric.com"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span>
-              <strong>More 509 Tools</strong>
-              <small>TrueBend · TruePhase · TrueFault · TrueDrop</small>
-            </span>
-            <span className="to-more-arrow" aria-hidden="true">
-              ›
-            </span>
-          </a>
-        </footer>
+            <footer className="to-footer">
+              <p className="to-disclaimer">A calculation aid for qualified professionals.</p>
+              <button
+                type="button"
+                className="to-more-tools"
+                onClick={() => setShowTools(true)}
+              >
+                <span>
+                  <strong>More 509 Tools</strong>
+                  <small>TrueBend · TruePhase · TrueFault · TrueMotor · TrueDrop</small>
+                </span>
+                <span className="to-more-arrow" aria-hidden="true">
+                  ›
+                </span>
+              </button>
+            </footer>
+          </>
+        )}
       </div>
 
       {showDeviceChrome ? <HomeIndicator /> : null}

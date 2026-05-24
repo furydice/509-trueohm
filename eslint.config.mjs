@@ -14,6 +14,7 @@ const globals = {
   navigator: "readonly",
   performance: "readonly",
   process: "readonly",
+  requestAnimationFrame: "readonly",
   setTimeout: "readonly",
   URL: "readonly",
   URLSearchParams: "readonly",
@@ -25,6 +26,7 @@ export default tseslint.config(
     ignores: [
       "node_modules/**",
       "**/dist/**",
+      "**/dist-ts/**",
       "**/build/**",
       "coverage/**",
       ".next/**",

@@ -14,7 +14,7 @@
 }
 .to-mode-switcher button {
   flex: 0 0 auto;
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
@@ -145,6 +145,137 @@
 }
 .to-more-tools .to-more-arrow {
   color: var(--text-dim);
+}
+
+/* Hide number-input spinners — cleaner on mobile */
+.vd-num-input::-webkit-inner-spin-button,
+.vd-num-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.vd-num-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ── Tools screen ────────────────────────────────────────────────────── */
+
+.tools-screen {
+  margin-top: 8px;
+  padding-bottom: 24px;
+}
+
+.tools-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--accent-text);
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tools-brand-header {
+  margin-bottom: 14px;
+}
+
+.tools-brand-heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.1;
+}
+
+.tools-brand-tagline {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tools-app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tools-app-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  color: inherit;
+  background: var(--surface);
+  padding: 14px 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tools-app-card:active {
+  background: var(--surface-2);
+}
+
+.tools-app-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+
+.tools-app-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tools-app-copy strong {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.tools-app-tagline {
+  display: block;
+  margin-top: 1px;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tools-app-copy small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tools-app-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.tools-footer-note {
+  margin: 22px 0 0 2px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* Phase toggle row label spacing reuse from .vd-toggle-row */
