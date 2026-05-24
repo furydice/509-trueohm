@@ -28,7 +28,7 @@ workflows:
     scripts:
       - name: Install pnpm and dependencies
         script: |
-          npm install --global pnpm@9.15.9
+          npm install --global --force pnpm@9.15.9
           pnpm config set store-dir "$PNPM_STORE_PATH"
           pnpm install --frozen-lockfile
       - name: Lint, typecheck, test, and build web
@@ -60,9 +60,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.fiveohninelectric.trueohm
       vars:
-        # TODO: Set APP_STORE_APPLE_ID to the numeric App Store Connect app id
-        # once the TrueOhm app record is created in ASC.
-        # APP_STORE_APPLE_ID: ''
+        APP_STORE_APPLE_ID: '6772605137'
         BUNDLE_ID: com.fiveohninelectric.trueohm
         XCODE_PROJECT: apps/web/ios/App/App.xcodeproj
         XCODE_SCHEME: App
@@ -84,7 +82,7 @@ workflows:
     scripts:
       - name: Install pnpm and dependencies
         script: |
-          npm install --global pnpm@9.15.9
+          npm install --global --force pnpm@9.15.9
           pnpm config set store-dir "$PNPM_STORE_PATH"
           pnpm install --frozen-lockfile
       - name: Lint, typecheck, test, and build web
@@ -101,9 +99,7 @@ workflows:
           npx cap sync ios
       - name: Require App Store Connect app id
         script: |
-          # TODO: Uncomment this guard once APP_STORE_APPLE_ID is set above.
-          # : "${APP_STORE_APPLE_ID:?Set APP_STORE_APPLE_ID in codemagic.yaml or Codemagic environment variables.}"
-          echo "APP_STORE_APPLE_ID guard: skipped until ASC app record exists"
+          : "${APP_STORE_APPLE_ID:?Set APP_STORE_APPLE_ID in codemagic.yaml or Codemagic environment variables.}"
       - name: Set up provisioning profiles
         script: |
           # Automatic signing: upload the distribution provisioning profile to
