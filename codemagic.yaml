@@ -132,3 +132,55 @@ workflows:
         submit_to_testflight: true
         expire_build_submitted_for_review: true
         submit_to_app_store: false
+
+  trueohm-android:
+    name: TrueOhm Android
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    labels:
+      - github
+      - android
+      - trueohm
+    environment:
+      java: 17
+      node: 24
+      vars:
+        PNPM_STORE_PATH: $CM_BUILD_DIR/.pnpm-store
+        # Release-AAB signing: create an Android keystore in Codemagic
+        # (Teams > Code signing identities > Android keystores) and add an
+        # `android_signing:` block referencing it to sign the release bundle for
+        # Play upload. Until then this builds an UNSIGNED release AAB, which
+        # validates the whole Android compile plus an installable debug APK.
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/.pnpm-store
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'android-*'
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Activate pnpm and install dependencies
+        script: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+          pnpm --version
+          pnpm config set store-dir "$PNPM_STORE_PATH"
+          pnpm install --frozen-lockfile
+      - name: Build web and sync Capacitor Android
+        script: |
+          set -euo pipefail
+          pnpm --filter @509-trueohm/web build
+          cd apps/web
+          npx cap sync android
+      - name: Build Android bundle (release AAB) + debug APK
+        script: |
+          set -euo pipefail
+          cd apps/web/android
+          chmod +x ./gradlew
+          ./gradlew bundleRelease assembleDebug --stacktrace
+    artifacts:
+      - apps/web/android/app/build/outputs/**/*.aab
+      - apps/web/android/app/build/outputs/**/*.apk

@@ -17,12 +17,14 @@
   },
   "dependencies": {
     "@509-trueohm/ohm-law": "workspace:*",
+    "@capacitor/android": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "lucide-react": "^1.16.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/ios": "^8.3.4",
     "@testing-library/jest-dom": "^6.5.0",
