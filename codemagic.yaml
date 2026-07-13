@@ -37,7 +37,7 @@ workflows:
           pnpm lint
           pnpm -r typecheck
           pnpm -r test
-          pnpm --filter @509-trueohm/web build
+          pnpm -r build
       - name: Sync Capacitor iOS target
         script: |
           set -euo pipefail
@@ -91,7 +91,7 @@ workflows:
           pnpm lint
           pnpm -r typecheck
           pnpm -r test
-          pnpm --filter @509-trueohm/web build
+          pnpm -r build
       - name: Sync Capacitor iOS target
         script: |
           set -euo pipefail
@@ -172,7 +172,7 @@ workflows:
       - name: Build web and sync Capacitor Android
         script: |
           set -euo pipefail
-          pnpm --filter @509-trueohm/web build
+          pnpm -r build
           cd apps/web
           npx cap sync android
       - name: Build Android bundle (release AAB) + debug APK
