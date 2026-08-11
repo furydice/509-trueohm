@@ -1,77 +1,4 @@
-interface AppCard {
-  name: string;
-  tagline: string;
-  description: string;
-  url: string;
-  icon: string;
-}
-
-const APPS: AppCard[] = [
-  {
-    name: "TrueBend",
-    tagline: "Conduit bending made exact",
-    description:
-      "Calculate offsets, 90s, saddles, and segment bends for EMT, IMC, and rigid conduit.",
-    url: "https://apps.apple.com/app/truebend",
-    icon: "/tool-icons/truebend.png",
-  },
-  {
-    name: "TrueDrop",
-    tagline: "Voltage drop calculator",
-    description:
-      "Size conductors and verify voltage drop for branch circuits and feeders per NEC.",
-    url: "https://apps.apple.com/app/truedrop",
-    icon: "/tool-icons/truedrop.svg",
-  },
-  {
-    name: "TrueFill",
-    tagline: "Conduit fill",
-    description:
-      "Size conduit and check fill percentages per NEC Chapter 9 — any conductor mix.",
-    url: "https://apps.apple.com/app/truefill",
-    icon: "/tool-icons/truefill.svg",
-  },
-  {
-    name: "TruePhase",
-    tagline: "Wire colors & circuit phase",
-    description:
-      "Assign phase colors across a panel schedule — single-phase or three-phase, any voltage.",
-    url: "https://apps.apple.com/app/truephase",
-    icon: "/tool-icons/truephase.png",
-  },
-  {
-    name: "TrueFault",
-    tagline: "Available fault current",
-    description:
-      "Calculate available fault current at any point in a distribution system per IEEE 141.",
-    url: "https://apps.apple.com/app/truefault",
-    icon: "/tool-icons/truefault.png",
-  },
-  {
-    name: "TrueMotor",
-    tagline: "NEC motor calculations",
-    description:
-      "Size conductors, overload protection, and short-circuit protection per NEC 430.",
-    url: "https://apps.apple.com/app/truemotor",
-    icon: "/tool-icons/truemotor.svg",
-  },
-  {
-    name: "TrueBox",
-    tagline: "NEC box fill & pull boxes",
-    description:
-      "Calculate box fill per NEC 314.16 and pull/junction box sizing per 314.28.",
-    url: "https://apps.apple.com/app/truebox",
-    icon: "/tool-icons/truebox.svg",
-  },
-  {
-    name: "TrueRate",
-    tagline: "Flat-rate pricing for electricians",
-    description:
-      "Build flat-rate price books, generate customer-ready quotes, and track job profitability.",
-    url: "https://apps.apple.com/app/truerate",
-    icon: "/tool-icons/truerate.png",
-  },
-];
+import { APP_STORE_APPS } from "../lib/app-store-apps";
 
 function ExternalLinkIcon(): JSX.Element {
   return (
@@ -122,13 +49,11 @@ export function ToolsScreen({ onBack }: ToolsScreenProps): JSX.Element {
         <h2 className="tools-brand-heading">
           More <span style={{ color: "var(--accent)" }}>509</span> Tools
         </h2>
-        <p className="tools-brand-tagline">
-          Free electrical tools from 509 Electric — built for the field.
-        </p>
+        <p className="tools-brand-tagline">A companion field tool from 509 Electric.</p>
       </div>
 
       <div className="tools-app-list" role="list">
-        {APPS.map((app) => (
+        {APP_STORE_APPS.map((app) => (
           <a
             key={app.name}
             href={app.url}
@@ -150,6 +75,7 @@ export function ToolsScreen({ onBack }: ToolsScreenProps): JSX.Element {
             <span className="tools-app-copy">
               <strong>{app.name}</strong>
               <span className="tools-app-tagline">{app.tagline}</span>
+              <small>{app.priceLabel}</small>
               <small>{app.description}</small>
             </span>
             <span className="tools-app-arrow" aria-hidden="true">
