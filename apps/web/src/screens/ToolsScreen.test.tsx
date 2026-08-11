@@ -21,9 +21,11 @@ describe("ToolsScreen", () => {
 
   it("renders the only companion as a safe accessible App Store link", () => {
     render(<ToolsScreen onBack={() => {}} />);
-    const links = document.querySelectorAll("a");
+    const links = screen.getAllByRole("link");
     expect(links).toHaveLength(1);
-    const link = links[0];
+    const link = screen.getByRole("link", {
+      name: /^TruePhase.*Wire colors and panel schedules.*View on App Store$/,
+    });
     expect(link.getAttribute("aria-label")).toBe(
       "TruePhase — Wire colors and panel schedules — View on App Store",
     );

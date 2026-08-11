@@ -52,7 +52,7 @@ export function ToolsScreen({ onBack }: ToolsScreenProps): JSX.Element {
         <p className="tools-brand-tagline">A companion field tool from 509 Electric.</p>
       </div>
 
-      <div className="tools-app-list" role="list">
+      <div className="tools-app-list">
         {APP_STORE_APPS.map((app) => (
           <a
             key={app.name}
@@ -60,7 +60,6 @@ export function ToolsScreen({ onBack }: ToolsScreenProps): JSX.Element {
             target="_blank"
             rel="noreferrer"
             className="tools-app-card"
-            role="listitem"
             aria-label={`${app.name} — ${app.tagline} — View on App Store`}
           >
             <img
