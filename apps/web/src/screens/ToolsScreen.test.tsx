@@ -19,17 +19,18 @@ describe("ToolsScreen", () => {
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  it("renders external links with target=_blank", () => {
+  it("renders the only companion as a safe accessible App Store link", () => {
     render(<ToolsScreen onBack={() => {}} />);
-    const links = screen.getAllByRole("listitem");
+    const links = document.querySelectorAll("a");
     expect(links).toHaveLength(1);
-    for (const item of links) {
-      const anchor = item.closest("a");
-      if (anchor) {
-        expect(anchor.getAttribute("target")).toBe("_blank");
-        expect(anchor.getAttribute("rel")).toBe("noreferrer");
-        expect(anchor.getAttribute("href")).toBe("https://apps.apple.com/app/id6771228149");
-      }
-    }
+    const link = links[0];
+    expect(link.getAttribute("aria-label")).toBe(
+      "TruePhase — Wire colors and panel schedules — View on App Store",
+    );
+    expect(link.textContent).toContain("TruePhase");
+    expect(link.textContent).toContain("Free · Pro available");
+    expect(link.getAttribute("href")).toBe("https://apps.apple.com/app/id6771228149");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noreferrer");
   });
 });
