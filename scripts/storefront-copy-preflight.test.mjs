@@ -643,6 +643,70 @@ test("browser-invalid or non-rendered HTML cannot satisfy the storefront contrac
     assert.notDeepEqual(auditRepository(fixtureRoot), [], "hidden storefront unexpectedly passed");
   });
 
+  await t.test("required copy hidden in an aria-hidden SVG", () => {
+    const fixtureRoot = makeFixture(t);
+    const file = join(fixtureRoot, page);
+    const source = readFileSync(file, "utf8");
+    const visibleTagline = `<p class="tagline" data-copy="copy:trueohm.website.support">
+          Solve everyday electrical formulas, see your values in the equation, and check
+          plain-language warnings before relying on a result.
+        </p>`;
+    const hiddenSvg = `<svg aria-hidden="true" data-copy="copy:trueohm.website.support">
+          Solve everyday electrical formulas, see your values in the equation, and check
+          plain-language warnings before relying on a result.
+        </svg>`;
+    assert.ok(source.includes(visibleTagline), "homepage fixture is missing the visible tagline");
+    writeFileSync(file, source.replace(visibleTagline, hiddenSvg), "utf8");
+    assert.notDeepEqual(
+      auditRepository(fixtureRoot),
+      [],
+      "aria-hidden SVG unexpectedly satisfied required copy",
+    );
+  });
+
+  await t.test("CTA name hidden in an aria-hidden SVG", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(
+      fixtureRoot,
+      page,
+      "Download free on the App Store →",
+      '<svg aria-hidden="true"><text>Download free on the App Store →</text></svg>',
+    );
+    assert.notDeepEqual(
+      auditRepository(fixtureRoot),
+      [],
+      "aria-hidden SVG unexpectedly supplied the CTA accessible name",
+    );
+  });
+
+  for (const copy of [
+    'Your data never <svg aria-hidden="true"><text>secret</text></svg>leaves your device.',
+    'Month<svg aria-hidden="true"><text>x</text></svg>ly access.',
+    "Month<div hidden><div></div>x</div>ly access.",
+    "Month<svg hidden><svg></svg><text>x</text></svg>ly access.",
+  ]) {
+    await t.test(`hidden subtree cannot split prohibited copy: ${copy}`, () => {
+      const fixtureRoot = makeFixture(t);
+      replaceOnce(fixtureRoot, page, "</main>", `<p>${copy}</p></main>`);
+      assert.notDeepEqual(
+        auditRepository(fixtureRoot),
+        [],
+        "hidden subtree unexpectedly bypassed prohibited-copy audit",
+      );
+    });
+  }
+
+  await t.test("unquoted aria-hidden CTA descendant", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(
+      fixtureRoot,
+      page,
+      "Download free on the App Store →",
+      "<svg aria-hidden=true><text>Download free on the App Store →</text></svg>",
+    );
+    assert.notDeepEqual(auditRepository(fixtureRoot), [], "unquoted hidden SVG supplied CTA name");
+  });
+
   await t.test("comment-split CSS hides the storefront", () => {
     const fixtureRoot = makeFixture(t);
     const css = "sites/trueohm/public/style.css";
@@ -691,6 +755,10 @@ test("commerce, price, and retired-product variants fail closed", async (t) => {
     "Unlock for â‚¬4.99.",
     "com.fiveohninelectric.truephase.pro.monthly",
     "com&#46;fiveohninelectric&#46;truephase&#46;pro&#46;monthly",
+    "Month<strong>ly</strong> access.",
+    "Unlock for 4.<strong>99</strong> USD.",
+    "Your data never <strong>leaves</strong> your device.",
+    "com.fiveohninelectric.truephase.pro.<strong>monthly</strong>",
   ];
 
   for (const copy of prohibited) {

@@ -189,10 +189,13 @@ function decodeEntities(value) {
 function visibleText(value) {
   return decodeEntities(
     value
-      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<(script|style|template|noscript)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ")
       .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<[^>]+>/g, " "),
+      .replace(
+        /<\/?(?:address|article|aside|blockquote|br|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>/gi,
+        " ",
+      )
+      .replace(/<[^>]+>/g, ""),
   )
     .replace(/\s+/g, " ")
     .trim();
@@ -246,6 +249,13 @@ function attribute(tag, name) {
   return matches.length === 1 ? decodeEntities(matches[0][2]) : null;
 }
 
+function hasTrueAttribute(tag, name) {
+  return new RegExp(
+    `(?:^|\\s)${escapeRegExp(name)}\\s*=\\s*(?:(["'])true\\1|true)(?=\\s|/?>|$)`,
+    "i",
+  ).test(tag);
+}
+
 function startTags(text, tagName = "[a-z][a-z0-9-]*") {
   return [...text.matchAll(new RegExp(`<(${tagName})\\b([^>]*)>`, "gi"))].map((match) => ({
     attributes: match[2],
@@ -257,7 +267,7 @@ function startTags(text, tagName = "[a-z][a-z0-9-]*") {
 function isHiddenTag(tag) {
   return (
     /(?:^|\s)hidden(?:\s|=|$)/i.test(tag.attributes) ||
-    attribute(tag.source, "aria-hidden")?.toLowerCase() === "true" ||
+    hasTrueAttribute(tag.source, "aria-hidden") ||
     /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)\s*(?:;|$)/i.test(
       attribute(tag.source, "style") ?? "",
     )
@@ -271,6 +281,26 @@ function auditHtmlStructure(file, text, errors) {
   if (/<\/?(?:script|style|template|noscript)\b/i.test(text)) {
     errors.push(`${file}: non-rendered or executable HTML containers are not allowed`);
   }
+  if (
+    [...text.matchAll(/<svg\b[^>]*>[\s\S]*?<\/svg\s*>/gi)].some(([svg]) =>
+      /\bdata-copy\s*=/i.test(svg),
+    )
+  ) {
+    errors.push(`${file}: audited data-copy content must not be inside SVG markup`);
+  }
+  const svgStack = [];
+  for (const match of text.matchAll(/<\/?svg\b[^>]*>/gi)) {
+    if (/^<\//.test(match[0])) {
+      svgStack.pop();
+      continue;
+    }
+    if (svgStack.some(({ hidden }) => hidden)) {
+      errors.push(`${file}: hidden SVG markup must not contain nested SVG elements`);
+      break;
+    }
+    svgStack.push({ hidden: isHiddenTag(startTags(match[0], "svg")[0]) });
+    if (/\/>$/.test(match[0])) svgStack.pop();
+  }
 
   const mainTags = startTags(text, "main");
   if (mainTags.length !== 1 || isHiddenTag(mainTags[0])) {
@@ -280,6 +310,17 @@ function auditHtmlStructure(file, text, errors) {
   for (const tag of startTags(text)) {
     if (tag.name !== "svg" && isHiddenTag(tag)) {
       errors.push(`${file}: audited storefront content must not be hidden`);
+      break;
+    }
+  }
+  for (const match of text.matchAll(/(?=<([a-z][a-z0-9-]*)\b([^>]*)>([\s\S]*?)<\/\1\s*>)/gi)) {
+    const tag = {
+      attributes: match[2],
+      name: match[1].toLowerCase(),
+      source: `<${match[1]}${match[2]}>`,
+    };
+    if (isHiddenTag(tag) && visibleText(match[3]) !== "") {
+      errors.push(`${file}: hidden storefront elements must not contain customer-facing text`);
       break;
     }
   }
@@ -301,6 +342,14 @@ function auditHtmlStructure(file, text, errors) {
     }
     if (/(?:^|\s)aria-labelledby\s*=/i.test(tag.attributes)) {
       errors.push(`${file}: storefront anchors must use self-contained accessible names`);
+    }
+  }
+  for (const match of text.matchAll(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi)) {
+    if (
+      attribute(match[0], "href") === appStoreUrl &&
+      startTags(match[0]).slice(1).some(isHiddenTag)
+    ) {
+      errors.push(`${file}: storefront anchor names must not come from hidden descendants`);
     }
   }
 }
@@ -703,9 +752,12 @@ function auditProhibitedCopy(documents, errors) {
 
   for (const [file, text] of documents) {
     if (text === null) continue;
-    const auditedText = decodeEntities(text);
+    const rawDecoded = decodeEntities(text);
+    const auditedText = visibleText(text);
     for (const [pattern, label] of patterns) {
-      if (pattern.test(auditedText)) errors.push(`${file}: prohibited ${label} is present`);
+      if (pattern.test(auditedText) || pattern.test(rawDecoded)) {
+        errors.push(`${file}: prohibited ${label} is present`);
+      }
     }
   }
 }
