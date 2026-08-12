@@ -18,6 +18,7 @@ const requiredFiles = [
   listingFile,
   storyboardFile,
   ...pageFiles,
+  "sites/trueohm/public/style.css",
   "sites/trueohm/wrangler.jsonc",
 ];
 
@@ -160,6 +161,14 @@ function normalizeText(value) {
   return value.replace(/\r\n?/g, "\n").trim();
 }
 
+function renderedHtml(value) {
+  return value
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
+    .replace(/<script\b[\s\S]*?(?:<\/script\s*>|$)/gi, " ")
+    .replace(/<style\b[\s\S]*?(?:<\/style\s*>|$)/gi, " ")
+    .replace(/<template\b[\s\S]*?(?:<\/template\s*>|$)/gi, " ");
+}
+
 function decodeEntities(value) {
   const named = {
     amp: "&",
@@ -252,8 +261,10 @@ function elementByDataCopy(text, id) {
 
 function allAnchors(text) {
   return [...text.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)].map((match) => ({
+    accessibleLabel: attribute(match[1], "aria-label"),
     href: attribute(match[1], "href"),
     text: visibleText(match[2]),
+    title: attribute(match[1], "title"),
   }));
 }
 
@@ -265,6 +276,22 @@ function appStoreAnchors(text) {
     } catch {
       return false;
     }
+  });
+}
+
+function appStoreLikeAnchors(text) {
+  return allAnchors(text).filter(({ accessibleLabel, href, text: anchorText, title }) => {
+    let appleDestination = false;
+    if (href) {
+      try {
+        const hostname = new URL(href).hostname.toLowerCase();
+        appleDestination = hostname === "apple.com" || hostname.endsWith(".apple.com");
+      } catch {
+        appleDestination = false;
+      }
+    }
+    const customerLabel = [accessibleLabel, anchorText, title].filter(Boolean).join(" ");
+    return appleDestination || /\b(?:app\s*store|download|install)\b/i.test(customerLabel);
   });
 }
 
@@ -342,6 +369,9 @@ function auditWrangler(text, errors) {
   }
   if (config.assets?.html_handling !== "auto-trailing-slash") {
     errors.push('wrangler: assets.html_handling must be exactly "auto-trailing-slash"');
+  }
+  if (config.assets?.directory !== "./public") {
+    errors.push('wrangler: assets.directory must be exactly "./public"');
   }
   if (
     !Array.isArray(config.routes) ||
@@ -430,7 +460,7 @@ function auditAppStoreAnchors(pages, errors) {
   for (const file of pageFiles) {
     const text = pages.get(file);
     if (text === null) continue;
-    const anchors = appStoreAnchors(text);
+    const anchors = appStoreLikeAnchors(text);
     total += anchors.length;
     if (file === pageFiles[0]) {
       if (anchors.length !== 1 || anchors[0].href !== appStoreUrl) {
@@ -442,6 +472,21 @@ function auditAppStoreAnchors(pages, errors) {
   }
   if (total !== 1) {
     errors.push("App Store anchors: customer-facing pages must contain exactly one");
+  }
+}
+
+function auditStylesheets(pages, errors) {
+  for (const [file, text] of pages) {
+    if (text === null) continue;
+    const stylesheets = [...text.matchAll(/<link\b[^>]*>/gi)]
+      .map((match) => ({
+        href: attribute(match[0], "href"),
+        rel: attribute(match[0], "rel"),
+      }))
+      .filter(({ rel }) => rel?.toLowerCase().split(/\s+/).includes("stylesheet"));
+    if (stylesheets.length !== 1 || stylesheets[0].href !== "/style.css") {
+      errors.push(`${file}: stylesheet must be exactly /style.css`);
+    }
   }
 }
 
@@ -476,7 +521,7 @@ function auditProhibitedCopy(documents, errors) {
       "absolute local-data claim",
     ],
     [
-      /\b(?:annual|monthly|yearly|recurring|auto-renew(?:ing|able)?)\s+(?:subscription|plan|billing|charge)\b|\bsubscription\s+(?:plan|price|purchase|billing|renews?|includes?|unlocks?)\b|\$\s*\d+(?:\.\d{1,2})?\s*(?:\/|per\s+)(?:month|year)\b/i,
+      /\b(?:annual(?:ly)?|monthly|yearly|recurring|auto-renew(?:ing|able)?)\s+(?:subscription|plan|billing|charge|access)\b|\bsubscription\s+(?:plan|price|purchase|billing|renews?|includes?|unlocks?)\b|\b(?:subscribe|automatically\s+renewable|free\s+trial|billed\s+(?:monthly|yearly|annually))\b|\$\s*\d+(?:\.\d{1,2})?\s*(?:\/|per\s+)(?:month|year)\b/i,
       "recurring-commerce sales language",
     ],
     [/\$\s*\d+(?:\.\d{1,2})?\b/, "numeric purchase price"],
@@ -526,7 +571,12 @@ export function auditRepository(root = repositoryRoot) {
     errors.push("What's New: listing must retain the explicit no-candidate boundary");
   }
 
-  const pages = new Map(pageFiles.map((file) => [file, files.get(file)]));
+  const pages = new Map(
+    pageFiles.map((file) => {
+      const text = files.get(file);
+      return [file, text === null ? null : renderedHtml(text)];
+    }),
+  );
   for (const field of websiteFields) {
     const text = pages.get(field.file);
     if (text === null) continue;
@@ -538,6 +588,7 @@ export function auditRepository(root = repositoryRoot) {
 
   auditCanonicalLinks(pages, errors);
   auditAppStoreAnchors(pages, errors);
+  auditStylesheets(pages, errors);
   auditLocalNavigation(pages, errors);
   if (files.get("sites/trueohm/wrangler.jsonc") !== null) {
     auditWrangler(files.get("sites/trueohm/wrangler.jsonc"), errors);

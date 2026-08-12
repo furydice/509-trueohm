@@ -23,6 +23,7 @@ const requiredFiles = [
   "sites/trueohm/public/support.html",
   "sites/trueohm/public/privacy.html",
   "sites/trueohm/public/terms.html",
+  "sites/trueohm/public/style.css",
   "sites/trueohm/wrangler.jsonc",
 ];
 
@@ -295,7 +296,7 @@ test("the gate protects every one of the 29 approved packet values in its assign
   }
 });
 
-test("the required inventory fails closed for a missing page and invalid UTF-8", async (t) => {
+test("the required inventory fails closed for a missing page, stylesheet, and invalid UTF-8", async (t) => {
   const auditRepository = await loadAudit();
 
   await t.test("missing page", () => {
@@ -316,6 +317,16 @@ test("the required inventory fails closed for a missing page and invalid UTF-8",
     assert.ok(
       auditRepository(fixtureRoot).some(
         (error) => error.includes("sites/trueohm/public/support.html") && error.includes("UTF-8"),
+      ),
+    );
+  });
+
+  await t.test("missing shared stylesheet", () => {
+    const fixtureRoot = makeFixture(t);
+    unlinkSync(join(fixtureRoot, "sites/trueohm/public/style.css"));
+    assert.ok(
+      auditRepository(fixtureRoot).some(
+        (error) => error.includes("sites/trueohm/public/style.css") && error.includes("missing"),
       ),
     );
   });
@@ -356,6 +367,39 @@ test("App Store links fail closed for a wrong ID, a duplicate, or a non-homepage
       ),
     );
   });
+
+  await t.test("generic Apple download destination", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(
+      fixtureRoot,
+      "sites/trueohm/public/index.html",
+      "</main>",
+      '<a href="https://www.apple.com/app-store/">Download on the App Store</a></main>',
+    );
+    assert.ok(auditRepository(fixtureRoot).some((error) => error.includes("App Store")));
+  });
+
+  await t.test("non-Apple download destination", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(
+      fixtureRoot,
+      "sites/trueohm/public/index.html",
+      "</main>",
+      '<a href="https://example.com/download">Install TrueOhm</a></main>',
+    );
+    assert.ok(auditRepository(fixtureRoot).some((error) => error.includes("App Store")));
+  });
+
+  await t.test("placeholder destination hidden behind an accessible label", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(
+      fixtureRoot,
+      "sites/trueohm/public/index.html",
+      "</main>",
+      '<a href="#" aria-label="Download on the App Store"><svg></svg></a></main>',
+    );
+    assert.ok(auditRepository(fixtureRoot).some((error) => error.includes("App Store")));
+  });
 });
 
 test("Wrangler validation rejects wrong structure, extra routes, and wrong HTML handling", async (t) => {
@@ -380,6 +424,12 @@ test("Wrangler validation rejects wrong structure, extra routes, and wrong HTML 
         config.assets.html_handling = "none";
       },
     ],
+    [
+      "wrong static asset directory",
+      (config) => {
+        config.assets.directory = "./wrong";
+      },
+    ],
   ]) {
     await t.test(name, () => {
       const fixtureRoot = makeFixture(t);
@@ -392,6 +442,93 @@ test("Wrangler validation rejects wrong structure, extra routes, and wrong HTML 
   }
 });
 
+test("HTML comments cannot satisfy required semantic copy or links", async (t) => {
+  const auditRepository = await loadAudit();
+  const cases = [
+    ["copy:trueohm.website.title", /<title\b[^>]*>[\s\S]*?<\/title>/i],
+    ["copy:trueohm.website.meta", /<meta\b(?=[^>]*\bname=["']description["'])[^>]*>/i],
+    ["copy:trueohm.website.hero", /<h1\b[^>]*>[\s\S]*?<\/h1>/i],
+    [
+      "copy:trueohm.website.local",
+      /<[a-z][a-z0-9-]*\b[^>]*\bdata-copy=["']copy:trueohm\.website\.local["'][^>]*>[\s\S]*?<\/[a-z][a-z0-9-]*\s*>/i,
+    ],
+    [
+      "App Store",
+      /<a\b[^>]*href=["']https:\/\/apps\.apple\.com\/app\/id6772605137["'][^>]*>[\s\S]*?<\/a\s*>/i,
+    ],
+    ["canonical URL", /<link\b(?=[^>]*\brel=["']canonical["'])[^>]*>/i],
+  ];
+
+  for (const [expectedError, pattern] of cases) {
+    await t.test(expectedError, () => {
+      const fixtureRoot = makeFixture(t);
+      const file = join(fixtureRoot, "sites/trueohm/public/index.html");
+      const source = readFileSync(file, "utf8");
+      assert.match(source, pattern);
+      writeFileSync(
+        file,
+        source.replace(pattern, (match) => `<!-- ${match} -->`),
+        "utf8",
+      );
+      assert.ok(
+        auditRepository(fixtureRoot).some((error) => error.includes(expectedError)),
+        `${expectedError} was satisfied by comment-only HTML`,
+      );
+    });
+  }
+});
+
+test("non-rendered script and template content cannot satisfy required copy", async (t) => {
+  const auditRepository = await loadAudit();
+  const cases = [
+    ["copy:trueohm.website.hero", /<h1\b[^>]*>[\s\S]*?<\/h1>/i, "script"],
+    [
+      "App Store",
+      /<a\b[^>]*href=["']https:\/\/apps\.apple\.com\/app\/id6772605137["'][^>]*>[\s\S]*?<\/a\s*>/i,
+      "template",
+    ],
+  ];
+
+  for (const [expectedError, pattern, wrapper] of cases) {
+    await t.test(`${wrapper} ${expectedError}`, () => {
+      const fixtureRoot = makeFixture(t);
+      const file = join(fixtureRoot, "sites/trueohm/public/index.html");
+      const source = readFileSync(file, "utf8");
+      assert.match(source, pattern);
+      writeFileSync(
+        file,
+        source.replace(pattern, (match) => `<${wrapper}>${match}</${wrapper}>`),
+        "utf8",
+      );
+      assert.ok(
+        auditRepository(fixtureRoot).some((error) => error.includes(expectedError)),
+        `${expectedError} was satisfied by non-rendered ${wrapper} content`,
+      );
+    });
+  }
+});
+
+test("every page requires the shared stylesheet link", async (t) => {
+  const auditRepository = await loadAudit();
+
+  for (const page of ["index.html", "support.html", "privacy.html", "terms.html"]) {
+    await t.test(page, () => {
+      const fixtureRoot = makeFixture(t);
+      replaceOnce(
+        fixtureRoot,
+        `sites/trueohm/public/${page}`,
+        'href="/style.css"',
+        'href="/missing.css"',
+      );
+      assert.ok(
+        auditRepository(fixtureRoot).some(
+          (error) => error.includes(page) && error.includes("stylesheet"),
+        ),
+      );
+    });
+  }
+});
+
 test("the gate rejects stale customer-facing claims while allowing approved negative commerce copy", async (t) => {
   const auditRepository = await loadAudit();
   const prohibited = [
@@ -400,6 +537,10 @@ test("the gate rejects stale customer-facing claims while allowing approved nega
     "<p>We usually reply within one business day.</p>",
     "<p>Your data never leaves your device.</p>",
     "<p>Choose an annual subscription plan.</p>",
+    "<p>This purchase is automatically renewable.</p>",
+    "<p>Subscribe now.</p>",
+    "<p>Monthly access.</p>",
+    "<p>Free trial, then billed annually.</p>",
     "<p>Unlock every feature for $4.99.</p>",
     "<p>com.fiveohninelectric.trueohm.pro.monthly</p>",
   ];
@@ -410,6 +551,16 @@ test("the gate rejects stale customer-facing claims while allowing approved nega
       replaceOnce(fixtureRoot, "sites/trueohm/public/index.html", "</main>", `${staleCopy}</main>`);
       assert.notDeepEqual(auditRepository(fixtureRoot), []);
     });
+  }
+});
+
+test("approved negative commerce statements remain valid in their assigned pages", async () => {
+  const auditRepository = await loadAudit();
+  const fixtureRoot = makeFixture({ after: () => {} });
+  try {
+    assert.deepEqual(auditRepository(fixtureRoot), []);
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
   }
 });
 
