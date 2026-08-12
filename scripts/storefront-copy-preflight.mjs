@@ -360,7 +360,7 @@ function canonicalLinks(text) {
       href: attribute(match[0], "href"),
       rel: attribute(match[0], "rel"),
     }))
-    .filter(({ rel }) => rel?.toLowerCase() === "canonical");
+    .filter(({ rel }) => rel?.toLowerCase().split(/\s+/).includes("canonical"));
 }
 
 function extractWebsiteField(text, field, errors) {
@@ -600,7 +600,11 @@ function auditCanonicalLinks(pages, errors) {
     const text = pages.get(file);
     if (text === null) continue;
     const links = canonicalLinks(text);
-    if (links.length !== 1 || links[0].href !== expected) {
+    if (
+      links.length !== 1 ||
+      links[0].rel?.toLowerCase() !== "canonical" ||
+      links[0].href !== expected
+    ) {
       errors.push(`${file}: canonical URL must be exactly ${expected}`);
     }
   }
@@ -636,12 +640,13 @@ function auditStylesheets(pages, errors) {
         media: attribute(match[0], "media"),
         rel: attribute(match[0], "rel"),
       }))
-      .filter(({ rel }) => rel?.toLowerCase() === "stylesheet");
+      .filter(({ rel }) => rel?.toLowerCase().split(/\s+/).includes("stylesheet"));
     if (
       stylesheets.length !== 1 ||
       stylesheets[0].disabled ||
       stylesheets[0].href !== "/style.css" ||
-      stylesheets[0].media !== null
+      stylesheets[0].media !== null ||
+      stylesheets[0].rel?.toLowerCase() !== "stylesheet"
     ) {
       errors.push(`${file}: stylesheet must be exactly /style.css`);
     }

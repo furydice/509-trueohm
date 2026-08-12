@@ -613,6 +613,16 @@ test("browser-invalid or non-rendered HTML cannot satisfy the storefront contrac
       '<link rel="stylesheet" href="/style.css" />',
       '<link rel="stylesheet" href="/style.css" disabled />',
     ],
+    [
+      "competing canonical relation",
+      "</head>",
+      '<link rel="alternate canonical" href="https://example.com" /></head>',
+    ],
+    [
+      "competing stylesheet relation",
+      "</head>",
+      '<link rel="alternate stylesheet" href="https://example.com/hide.css" /></head>',
+    ],
   ];
 
   for (const [name, expected, replacement] of mutations) {
