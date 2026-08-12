@@ -285,6 +285,22 @@ function paeth(a, b, c) {
   return pb <= pc ? b : c;
 }
 
+const crc32Table = Uint32Array.from({ length: 256 }, (_, index) => {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return crc >>> 0;
+});
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = crc32Table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 function inspectPng(buffer) {
   if (!buffer.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) {
     throw new Error("attachment is not a PNG");
@@ -301,6 +317,9 @@ function inspectPng(buffer) {
     const dataStart = offset + 8;
     const dataEnd = dataStart + length;
     if (dataEnd + 4 > buffer.length) throw new Error("PNG chunk is truncated");
+    const expectedCrc = buffer.readUInt32BE(dataEnd);
+    const actualCrc = crc32(buffer.subarray(offset + 4, dataEnd));
+    if (actualCrc !== expectedCrc) throw new Error(`PNG ${type} chunk CRC does not match`);
     const data = buffer.subarray(dataStart, dataEnd);
     if (type === "IHDR") {
       if (chunkIndex !== 0 || header) throw new Error("PNG IHDR must be the first and only header");
@@ -362,6 +381,7 @@ function inspectPng(buffer) {
   let luminanceTotal = 0;
   let sampleCount = 0;
   const pixelStride = Math.max(1, Math.floor((width * height) / 20_000));
+  const pixelHasher = createHash("sha256");
 
   for (let y = 0; y < height; y += 1) {
     const rowOffset = y * (rowBytes + 1);
@@ -394,6 +414,17 @@ function inspectPng(buffer) {
       }
       current[x] = value & 0xff;
     }
+    if (colorType === 0) {
+      const rgb = Buffer.allocUnsafe(width * 3);
+      for (let x = 0; x < width; x += 1) {
+        rgb[x * 3] = current[x];
+        rgb[x * 3 + 1] = current[x];
+        rgb[x * 3 + 2] = current[x];
+      }
+      pixelHasher.update(rgb);
+    } else {
+      pixelHasher.update(current);
+    }
     for (let x = 0; x < width; x += pixelStride) {
       const pixel = x * channels;
       const red = current[pixel];
@@ -414,7 +445,13 @@ function inspectPng(buffer) {
       `PNG appears black or lacks visual variation (range=${(maximum - minimum).toFixed(1)}, average=${average.toFixed(1)})`,
     );
   }
-  return { width, height, bytes: buffer.length, luminanceRange: maximum - minimum };
+  return {
+    width,
+    height,
+    bytes: buffer.length,
+    luminanceRange: maximum - minimum,
+    pixelSha256: pixelHasher.digest("hex"),
+  };
 }
 
 function sha256(buffer) {
@@ -489,6 +526,7 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
     }
 
     const byFrame = new Map();
+    const exportedNames = new Set();
     for (const attachment of attachments) {
       const frame = frameFromSuggestedName(attachment.suggestedHumanReadableName);
       if (!frame) {
@@ -506,6 +544,10 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
       ) {
         throw new Error(`${device} attachment has an unsafe exported filename`);
       }
+      if (exportedNames.has(exportedName)) {
+        throw new Error(`${device} has duplicate source filename ${exportedName}`);
+      }
+      exportedNames.add(exportedName);
       byFrame.set(frame, exportedName);
     }
     attachmentInventories.set(device, { rawDirectory, byFrame });
@@ -516,6 +558,8 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
     const { rawDirectory, byFrame } = attachmentInventories.get(device);
     const outputDirectory = join(root, "screenshots", device);
     mkdirSync(outputDirectory, { recursive: true });
+    const fileHashes = new Set();
+    const pixelHashes = new Set();
     for (const frame of frameNames) {
       const exportedName = byFrame.get(frame);
       if (!exportedName) throw new Error(`${device} is missing attachment ${frame}`);
@@ -533,6 +577,15 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
       if (contract.width >= 1000 && inspection.bytes < 50_000) {
         throw new Error(`${device}/${frame} is implausibly small at ${inspection.bytes} bytes`);
       }
+      const fileSha256 = sha256(png);
+      if (fileHashes.has(fileSha256)) {
+        throw new Error(`${device}/${frame} has a duplicate screenshot file hash`);
+      }
+      if (pixelHashes.has(inspection.pixelSha256)) {
+        throw new Error(`${device}/${frame} has a duplicate screenshot pixel hash`);
+      }
+      fileHashes.add(fileSha256);
+      pixelHashes.add(inspection.pixelSha256);
       const output = join(outputDirectory, `${frame}.png`);
       copyFileSync(source, output);
       screenshots.push({
@@ -541,7 +594,7 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
         width: inspection.width,
         height: inspection.height,
         bytes: inspection.bytes,
-        sha256: sha256(png),
+        sha256: fileSha256,
         sourceAttachment: exportedName,
       });
     }

@@ -1,6 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { Capacitor } from "@capacitor/core";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("App shell", () => {
   it("renders the five-mode switcher", () => {
@@ -31,5 +36,37 @@ describe("App shell", () => {
   it("shows the qualified-professional disclaimer", () => {
     render(<App />);
     expect(document.body.textContent).toContain("aid for qualified professionals");
+  });
+
+  it("shows the complete mock device chrome in a wide browser preview", () => {
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
+
+    const { container } = render(<App />);
+
+    expect(container.querySelector(".trueohm-shell")?.getAttribute("data-device-chrome")).toBe(
+      "mock",
+    );
+    expect(container.querySelector(".status-bar")?.textContent).toMatch(/^\d{1,2}:\d{2}$/);
+    expect(container.querySelector(".dynamic-island")).toBeTruthy();
+    expect(container.querySelector(".status-glyphs")).toBeTruthy();
+    expect(container.querySelector(".home-indicator")).toBeTruthy();
+  });
+
+  it("hides every piece of mock device chrome on Capacitor native platforms", () => {
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+
+    const { container } = render(<App />);
+
+    expect(container.querySelector(".trueohm-shell")?.getAttribute("data-device-chrome")).toBe(
+      "native",
+    );
+    for (const selector of [
+      ".status-bar",
+      ".dynamic-island",
+      ".status-glyphs",
+      ".home-indicator",
+    ]) {
+      expect(container.querySelector(selector)).toBeNull();
+    }
   });
 });

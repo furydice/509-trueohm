@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -77,7 +78,28 @@ function pngChunk(type, data) {
   return Buffer.concat([length, typeBuffer, data, checksum]);
 }
 
-function makePng(width, height, { black = false, colorType = 2, transparency = false } = {}) {
+function flipChunkCrc(png, expectedType) {
+  const corrupted = Buffer.from(png);
+  let offset = 8;
+  while (offset + 12 <= corrupted.length) {
+    const length = corrupted.readUInt32BE(offset);
+    const type = corrupted.toString("ascii", offset + 4, offset + 8);
+    const crcOffset = offset + 8 + length;
+    assert.ok(crcOffset + 4 <= corrupted.length, `fixture PNG ${type} chunk is truncated`);
+    if (type === expectedType) {
+      corrupted[crcOffset] ^= 0x01;
+      return corrupted;
+    }
+    offset = crcOffset + 4;
+  }
+  assert.fail(`fixture PNG is missing ${expectedType}`);
+}
+
+function makePng(
+  width,
+  height,
+  { black = false, colorType = 2, transparency = false, scene = 0, metadata } = {},
+) {
   const channelsByType = new Map([
     [0, 1],
     [2, 3],
@@ -96,7 +118,7 @@ function makePng(width, height, { black = false, colorType = 2, transparency = f
     const row = Buffer.alloc(1 + width * channels);
     for (let x = 0; x < width; x += 1) {
       const offset = 1 + x * channels;
-      const light = black ? 0 : (x + y) % 2 === 0 ? 32 : 224;
+      const light = black ? 0 : (x + y + scene) % 2 === 0 ? 32 + scene : 224 - scene;
       row[offset] = light;
       if (colorType === 2 || colorType === 6) {
         row[offset + 1] = black ? 0 : 180 - Math.floor(light / 3);
@@ -109,10 +131,13 @@ function makePng(width, height, { black = false, colorType = 2, transparency = f
   const transparencyChunk = transparency
     ? [pngChunk("tRNS", colorType === 0 ? Buffer.alloc(2) : Buffer.alloc(6))]
     : [];
+  const metadataChunk =
+    metadata === undefined ? [] : [pngChunk("tEXt", Buffer.from(`scene\0${metadata}`, "latin1"))];
   return Buffer.concat([
     Buffer.from("89504e470d0a1a0a", "hex"),
     pngChunk("IHDR", header),
     ...transparencyChunk,
+    ...metadataChunk,
     pngChunk("IDAT", deflateSync(Buffer.concat(rows))),
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
@@ -131,7 +156,7 @@ const testDeviceContracts = {
   ipad: { name: "iPad Pro 13-inch (M4)", width: 30, height: 40 },
 };
 
-function makeEvidenceFixture(t) {
+function makeEvidenceFixture(t, { identicalScenes = false, uniqueMetadata = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "trueohm-native-artifacts-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "logs"), { recursive: true });
@@ -154,7 +179,13 @@ function makeEvidenceFixture(t) {
     mkdirSync(raw, { recursive: true });
     const attachments = frameNames.map((name, index) => {
       const exportedFileName = `${device}-${index}.png`;
-      writeFileSync(join(raw, exportedFileName), makePng(contract.width, contract.height));
+      writeFileSync(
+        join(raw, exportedFileName),
+        makePng(contract.width, contract.height, {
+          scene: identicalScenes ? 0 : index,
+          metadata: uniqueMetadata ? `${device}-${index}` : undefined,
+        }),
+      );
       return {
         exportedFileName,
         suggestedHumanReadableName: `${name}_0_${index}.png`,
@@ -348,12 +379,55 @@ test("materialization maps exactly five attachments per device and writes hashes
         ...frameNames.map((frame) => `ipad/${frame}.png`),
       ],
     );
+    assert.deepEqual(Object.keys(manifest.screenshots[0]).sort(), [
+      "bytes",
+      "device",
+      "frame",
+      "height",
+      "sha256",
+      "sourceAttachment",
+      "width",
+    ]);
+    for (const device of ["iphone", "ipad"]) {
+      assert.equal(
+        new Set(
+          manifest.screenshots
+            .filter((screenshot) => screenshot.device === device)
+            .map((screenshot) => screenshot.sha256),
+        ).size,
+        5,
+      );
+    }
     for (const device of ["iphone", "ipad"]) {
       for (const frame of frameNames) {
         assert.ok(readFileSync(join(root, "screenshots", device, `${frame}.png`)).length > 0);
       }
     }
-    assert.match(readFileSync(join(root, "sha256.txt"), "utf8"), /^[a-f0-9]{64} {2}screenshots\//m);
+    const inventory = readFileSync(join(root, "sha256.txt"), "utf8").trim().split("\n");
+    const expectedInventoryPaths = [
+      "logs/ipad-xcodebuild.log",
+      "logs/iphone-xcodebuild.log",
+      "manifest.json",
+      "simulator-contract.json",
+      "source-sha.txt",
+      "xcode-version.txt",
+      ...["iphone", "ipad"].flatMap((device) => [
+        `raw-${device}/manifest.json`,
+        ...frameNames.map((_, index) => `raw-${device}/${device}-${index}.png`),
+        ...frameNames.map((frame) => `screenshots/${device}/${frame}.png`),
+      ]),
+    ].sort();
+    assert.deepEqual(inventory.map((line) => line.slice(66)).sort(), expectedInventoryPaths);
+    for (const line of inventory) {
+      assert.match(line, /^[a-f0-9]{64} {2}.+$/);
+      const path = line.slice(66);
+      assert.equal(
+        line.slice(0, 64),
+        createHash("sha256")
+          .update(readFileSync(join(root, path)))
+          .digest("hex"),
+      );
+    }
     assert.deepEqual(JSON.parse(readFileSync(join(root, "manifest.json"), "utf8")), manifest);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -429,4 +503,64 @@ test("materialization rejects PNG alpha channels and transparency chunks", async
     writeFileSync(join(root, "raw-ipad", "ipad-0.png"), makePng(30, 40, { transparency: true }));
     assert.throws(() => materializeNativeEvidence(root, testDeviceContracts), /alpha|transparen/i);
   });
+});
+
+test("materialization rejects a PNG with a flipped IDAT CRC", () => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+  const root = makeEvidenceFixture({ after: () => {} });
+  try {
+    const screenshot = join(root, "raw-iphone", "iphone-0.png");
+    writeFileSync(screenshot, flipChunkCrc(readFileSync(screenshot), "IDAT"));
+
+    assert.throws(
+      () => materializeNativeEvidence(root, testDeviceContracts),
+      /IDAT.*CRC|CRC.*IDAT/i,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("materialization rejects duplicate source filenames within one device set", () => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+  const root = makeEvidenceFixture({ after: () => {} });
+  try {
+    const file = join(root, "raw-iphone", "manifest.json");
+    const manifest = JSON.parse(readFileSync(file, "utf8"));
+    manifest[0].attachments[1].exportedFileName = manifest[0].attachments[0].exportedFileName;
+    writeFileSync(file, JSON.stringify(manifest));
+
+    assert.throws(
+      () => materializeNativeEvidence(root, testDeviceContracts),
+      /duplicate.*(source|filename)|(?:source|filename).*duplicate/i,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("materialization rejects an all-identical five-scene device set", () => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+  const root = makeEvidenceFixture({ after: () => {} }, { identicalScenes: true });
+  try {
+    assert.throws(
+      () => materializeNativeEvidence(root, testDeviceContracts),
+      /duplicate.*(pixel|file|hash|content)/i,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("materialization rejects duplicate pixels hidden behind distinct PNG file hashes", () => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+  const root = makeEvidenceFixture(
+    { after: () => {} },
+    { identicalScenes: true, uniqueMetadata: true },
+  );
+  try {
+    assert.throws(() => materializeNativeEvidence(root, testDeviceContracts), /duplicate.*pixel/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

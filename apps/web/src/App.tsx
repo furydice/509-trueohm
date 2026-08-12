@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./styles/global.css";
 import "./styles/trueohm.css";
@@ -30,7 +31,7 @@ function getStoredTheme(): ThemeMode {
 }
 
 function shouldShowDeviceChrome(): boolean {
-  return !("capacitorVersion" in window) && window.innerWidth >= 390;
+  return !Capacitor.isNativePlatform() && window.innerWidth >= 390;
 }
 
 function StatusBar(): JSX.Element {
@@ -136,13 +137,7 @@ export function App(): JSX.Element {
       <div className="screen-stack">
         <header className="home-topbar">
           <div className="brand-lockup">
-            <img
-              src="/icon.svg"
-              alt=""
-              width={32}
-              height={32}
-              style={{ borderRadius: 8 }}
-            />
+            <img src="/icon.svg" alt="" width={32} height={32} style={{ borderRadius: 8 }} />
             <h1>
               True<span style={{ color: "var(--accent)" }}>Ohm</span>
             </h1>
@@ -162,7 +157,12 @@ export function App(): JSX.Element {
           <ToolsScreen onBack={() => setShowTools(false)} />
         ) : (
           <>
-            <div className="to-mode-switcher" role="group" aria-label="Calculator mode" ref={switcherRef}>
+            <div
+              className="to-mode-switcher"
+              role="group"
+              aria-label="Calculator mode"
+              ref={switcherRef}
+            >
               {MODES.map((m) => (
                 <button
                   key={m.id}
@@ -176,17 +176,11 @@ export function App(): JSX.Element {
               ))}
             </div>
 
-            <ErrorBoundary key={mode}>
-              {renderScreen(mode)}
-            </ErrorBoundary>
+            <ErrorBoundary key={mode}>{renderScreen(mode)}</ErrorBoundary>
 
             <footer className="to-footer">
               <p className="to-disclaimer">A calculation aid for qualified professionals.</p>
-              <button
-                type="button"
-                className="to-more-tools"
-                onClick={() => setShowTools(true)}
-              >
+              <button type="button" className="to-more-tools" onClick={() => setShowTools(true)}>
                 <span>
                   <strong>More 509 Tools</strong>
                   <small>TrueBend · TruePhase · TrueFault · TrueMotor · TrueDrop</small>
