@@ -264,13 +264,30 @@ function startTags(text, tagName = "[a-z][a-z0-9-]*") {
   }));
 }
 
+function isHiddenInlineStyle(value) {
+  if (value === null) return false;
+  const declarations = value.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, "").split(";");
+  for (const declaration of declarations) {
+    const separator = declaration.indexOf(":");
+    if (separator === -1) continue;
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const propertyValue = declaration
+      .slice(separator + 1)
+      .replace(/\s*!\s*important\s*$/i, "")
+      .trim()
+      .toLowerCase();
+    if (property === "display" && propertyValue === "none") return true;
+    if (property === "visibility" && ["hidden", "collapse"].includes(propertyValue)) return true;
+    if (property === "opacity" && /^(?:0+(?:\.0*)?|\.0+)$/.test(propertyValue)) return true;
+  }
+  return false;
+}
+
 function isHiddenTag(tag) {
   return (
     /(?:^|\s)hidden(?:\s|=|$)/i.test(tag.attributes) ||
     hasTrueAttribute(tag.source, "aria-hidden") ||
-    /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)\s*(?:;|$)/i.test(
-      attribute(tag.source, "style") ?? "",
-    )
+    isHiddenInlineStyle(attribute(tag.source, "style"))
   );
 }
 
@@ -370,7 +387,9 @@ function elementByDataCopy(text, id) {
 function allAnchors(text) {
   return [...text.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)].map((match) => ({
     accessibleLabel: attribute(match[1], "aria-label"),
+    className: attribute(match[1], "class"),
     href: attribute(match[1], "href"),
+    role: attribute(match[1], "role"),
     text: visibleText(match[2]),
     title: attribute(match[1], "title"),
   }));
@@ -388,19 +407,31 @@ function appStoreAnchors(text) {
 }
 
 function appStoreLikeAnchors(text) {
-  return allAnchors(text).filter(({ accessibleLabel, href, text: anchorText, title }) => {
-    let appleDestination = false;
-    if (href) {
-      try {
-        const hostname = new URL(href).hostname.toLowerCase();
-        appleDestination = hostname === "apple.com" || hostname.endsWith(".apple.com");
-      } catch {
-        appleDestination = false;
+  return allAnchors(text).filter(
+    ({ accessibleLabel, className, href, role, text: anchorText, title }) => {
+      let appleDestination = false;
+      if (href) {
+        try {
+          const hostname = new URL(href).hostname.toLowerCase();
+          appleDestination = hostname === "apple.com" || hostname.endsWith(".apple.com");
+        } catch {
+          appleDestination = false;
+        }
       }
-    }
-    const customerLabel = [accessibleLabel, anchorText, title].filter(Boolean).join(" ");
-    return appleDestination || /\b(?:app\s*store|download|install)\b/i.test(customerLabel);
-  });
+      const customerLabel = [accessibleLabel, anchorText, title].filter(Boolean).join(" ");
+      const installSemantics =
+        /\b(?:app\s*store|download|install|get\s+(?:the\s+)?app|get\s+trueohm)\b/i.test(
+          customerLabel,
+        );
+      const classes = new Set((className ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+      const primaryClass =
+        classes.has("primary") &&
+        ["btn", "button", "cta"].some((classToken) => classes.has(classToken));
+      return (
+        appleDestination || installSemantics || primaryClass || role?.toLowerCase() === "button"
+      );
+    },
+  );
 }
 
 function canonicalLinks(text) {

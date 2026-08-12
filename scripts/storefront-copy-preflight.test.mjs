@@ -741,6 +741,47 @@ test("every browser-visible App Store-like anchor is parsed and constrained", as
   }
 });
 
+test("approved website copy must remain visible under normalized inline CSS", async (t) => {
+  const auditRepository = await loadAudit();
+  const page = "sites/trueohm/public/index.html";
+  const hero = "<h1>";
+  const hiddenVariants = ['<h1 style="display: none !important">', '<h1 style="display:/**/none">'];
+
+  for (const replacement of hiddenVariants) {
+    await t.test(replacement, () => {
+      const fixtureRoot = makeFixture(t);
+      replaceOnce(fixtureRoot, page, hero, replacement);
+      assert.notDeepEqual(
+        auditRepository(fixtureRoot),
+        [],
+        `approved hero hidden by ${replacement} unexpectedly passed`,
+      );
+    });
+  }
+});
+
+test("semantic, classed, and button-role install CTAs cannot compete with the approved CTA", async (t) => {
+  const auditRepository = await loadAudit();
+  const page = "sites/trueohm/public/index.html";
+  const competingAnchors = [
+    '<a href="/support">Get App</a>',
+    '<a class="btn primary" href="/support">Learn more</a>',
+    '<a role="button" href="/support">Get TrueOhm</a>',
+  ];
+
+  for (const anchor of competingAnchors) {
+    await t.test(anchor, () => {
+      const fixtureRoot = makeFixture(t);
+      replaceOnce(fixtureRoot, page, "</main>", `${anchor}</main>`);
+      assert.notDeepEqual(
+        auditRepository(fixtureRoot),
+        [],
+        `competing install-primary CTA unexpectedly passed: ${anchor}`,
+      );
+    });
+  }
+});
+
 test("commerce, price, and retired-product variants fail closed", async (t) => {
   const auditRepository = await loadAudit();
   const prohibited = [
