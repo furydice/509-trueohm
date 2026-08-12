@@ -164,9 +164,7 @@ function normalizeText(value) {
 function renderedHtml(value) {
   return value
     .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
-    .replace(/<script\b[\s\S]*?(?:<\/script\s*>|$)/gi, " ")
-    .replace(/<style\b[\s\S]*?(?:<\/style\s*>|$)/gi, " ")
-    .replace(/<template\b[\s\S]*?(?:<\/template\s*>|$)/gi, " ");
+    .replace(/<(script|style|template|noscript)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ");
 }
 
 function decodeEntities(value) {
@@ -242,8 +240,69 @@ function tagMatches(text, tagName) {
 }
 
 function attribute(tag, name) {
-  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, "i"));
-  return match ? decodeEntities(match[2]) : null;
+  const matches = [
+    ...tag.matchAll(new RegExp(`(?:^|\\s)${escapeRegExp(name)}\\s*=\\s*(["'])(.*?)\\1`, "gi")),
+  ];
+  return matches.length === 1 ? decodeEntities(matches[0][2]) : null;
+}
+
+function startTags(text, tagName = "[a-z][a-z0-9-]*") {
+  return [...text.matchAll(new RegExp(`<(${tagName})\\b([^>]*)>`, "gi"))].map((match) => ({
+    attributes: match[2],
+    name: match[1].toLowerCase(),
+    source: match[0],
+  }));
+}
+
+function isHiddenTag(tag) {
+  return (
+    /(?:^|\s)hidden(?:\s|=|$)/i.test(tag.attributes) ||
+    attribute(tag.source, "aria-hidden")?.toLowerCase() === "true" ||
+    /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)\s*(?:;|$)/i.test(
+      attribute(tag.source, "style") ?? "",
+    )
+  );
+}
+
+function auditHtmlStructure(file, text, errors) {
+  if (/<!--[\s\S]*?(?:-->|$)/.test(text)) {
+    errors.push(`${file}: HTML comments are not allowed in audited storefront pages`);
+  }
+  if (/<\/?(?:script|style|template|noscript)\b/i.test(text)) {
+    errors.push(`${file}: non-rendered or executable HTML containers are not allowed`);
+  }
+
+  const mainTags = startTags(text, "main");
+  if (mainTags.length !== 1 || isHiddenTag(mainTags[0])) {
+    errors.push(`${file}: page must contain exactly one visible main element`);
+  }
+
+  for (const tag of startTags(text)) {
+    if (tag.name !== "svg" && isHiddenTag(tag)) {
+      errors.push(`${file}: audited storefront content must not be hidden`);
+      break;
+    }
+  }
+
+  let anchorOpen = false;
+  for (const match of text.matchAll(/<\/?a\b[^>]*>/gi)) {
+    const closing = /^<\//.test(match[0]);
+    if ((!closing && anchorOpen) || (closing && !anchorOpen)) {
+      errors.push(`${file}: anchor markup must be well formed and cannot be nested`);
+      break;
+    }
+    anchorOpen = !closing;
+  }
+  if (anchorOpen) errors.push(`${file}: anchor markup must be well formed and closed`);
+
+  for (const tag of startTags(text, "a")) {
+    if (attribute(tag.source, "href") === null) {
+      errors.push(`${file}: every anchor href must use a quoted value`);
+    }
+    if (/(?:^|\s)aria-labelledby\s*=/i.test(tag.attributes)) {
+      errors.push(`${file}: storefront anchors must use self-contained accessible names`);
+    }
+  }
 }
 
 function elementByDataCopy(text, id) {
@@ -301,7 +360,7 @@ function canonicalLinks(text) {
       href: attribute(match[0], "href"),
       rel: attribute(match[0], "rel"),
     }))
-    .filter(({ rel }) => rel?.toLowerCase().split(/\s+/).includes("canonical"));
+    .filter(({ rel }) => rel?.toLowerCase() === "canonical");
 }
 
 function extractWebsiteField(text, field, errors) {
@@ -340,6 +399,13 @@ function extractWebsiteField(text, field, errors) {
       errors.push(`${field.id}: ${field.file} must contain the exact direct App Store CTA`);
       return null;
     }
+    const accessibleName = anchors[0].accessibleLabel ?? anchors[0].text;
+    if (
+      accessibleName !== field.value ||
+      (anchors[0].title !== null && anchors[0].title !== field.value)
+    ) {
+      errors.push(`${field.id}: ${field.file} CTA accessible name must match the approved label`);
+    }
     return anchors[0].text;
   }
 
@@ -348,11 +414,78 @@ function extractWebsiteField(text, field, errors) {
 }
 
 function parseJsonc(text) {
-  const withoutComments = text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/,\s*([}\]])/g, "$1");
-  return JSON.parse(withoutComments);
+  let stripped = "";
+  let inString = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const next = text[index + 1];
+    if (inString) {
+      stripped += character;
+      if (character === "\\") {
+        index += 1;
+        stripped += text[index] ?? "";
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      stripped += character;
+      continue;
+    }
+    if (character === "/" && next === "/") {
+      index += 2;
+      while (index < text.length && text[index] !== "\n") index += 1;
+      stripped += "\n";
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      index += 2;
+      let closed = false;
+      while (index < text.length) {
+        if (text[index] === "\n") stripped += "\n";
+        if (text[index] === "*" && text[index + 1] === "/") {
+          index += 1;
+          closed = true;
+          break;
+        }
+        index += 1;
+      }
+      if (!closed) throw new SyntaxError("unterminated block comment");
+      continue;
+    }
+    stripped += character;
+  }
+  if (inString) throw new SyntaxError("unterminated string");
+
+  let normalized = "";
+  inString = false;
+  for (let index = 0; index < stripped.length; index += 1) {
+    const character = stripped[index];
+    if (inString) {
+      normalized += character;
+      if (character === "\\") {
+        index += 1;
+        normalized += stripped[index] ?? "";
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      normalized += character;
+      continue;
+    }
+    if (character === ",") {
+      let lookahead = index + 1;
+      while (/\s/.test(stripped[lookahead] ?? "")) lookahead += 1;
+      if (stripped[lookahead] === "}" || stripped[lookahead] === "]") continue;
+    }
+    normalized += character;
+  }
+  return JSON.parse(normalized);
 }
 
 function auditWrangler(text, errors) {
@@ -400,10 +533,7 @@ function auditPackage(text, errors) {
     errors.push("package.json: storefront:preflight must run the fail-closed gate");
   }
   const testScript = packageJson.scripts?.test ?? "";
-  if (
-    !testScript.includes("node --test scripts/storefront-copy-preflight.test.mjs") ||
-    !testScript.includes("pnpm -r test")
-  ) {
+  if (testScript !== "node --test scripts/storefront-copy-preflight.test.mjs && pnpm -r test") {
     errors.push("package.json: root test must run storefront Node tests and workspace tests");
   }
 }
@@ -426,21 +556,42 @@ function auditHtmlInventory(root, errors) {
 
 function auditMarkerInventory(documents, errors) {
   const expected = markerFields.map(([id]) => id).sort();
-  const actual = [];
-  for (const [file, text] of documents) {
+  const starts = [];
+  const ends = [];
+  for (const [, text] of documents) {
     if (text === null) continue;
-    for (const match of text.matchAll(/<!--\s*((?:aso|copy):trueohm\.[a-z0-9_.]+):start\s*-->/gi)) {
-      actual.push(match[1]);
+    for (const match of text.matchAll(
+      /<!--\s*((?:aso|copy):trueohm\.[^\s]+?):(start|end)\s*-->/gi,
+    )) {
+      (match[2].toLowerCase() === "start" ? starts : ends).push(match[1]);
     }
-    for (const match of text.matchAll(/<!--\s*((?:aso|copy):trueohm\.[a-z0-9_.]+):end\s*-->/gi)) {
-      if (!actual.includes(match[1])) {
-        errors.push(`${match[1]}: ${file} has an end marker without its start marker`);
+  }
+  starts.sort();
+  ends.sort();
+  if (starts.join("\n") !== expected.join("\n") || ends.join("\n") !== expected.join("\n")) {
+    errors.push("packet marker inventory: expected exactly the 17 document-backed packet values");
+  }
+}
+
+function auditDataCopyInventory(pages, errors) {
+  const expected = websiteFields
+    .filter(({ kind }) => kind === "dataCopy")
+    .map(({ file, id }) => `${file}\0${id}`)
+    .sort();
+  const actual = [];
+  for (const [file, text] of pages) {
+    if (text === null) continue;
+    for (const tag of startTags(text)) {
+      const id = attribute(tag.source, "data-copy");
+      if (id !== null) actual.push(`${file}\0${id}`);
+      else if (/\bdata-copy\s*=/i.test(tag.source)) {
+        errors.push(`${file}: data-copy values must use quoted exact marker ids`);
       }
     }
   }
   actual.sort();
   if (actual.join("\n") !== expected.join("\n")) {
-    errors.push("packet marker inventory: expected exactly the 17 document-backed packet values");
+    errors.push("website marker inventory: expected exactly the assigned data-copy values");
   }
 }
 
@@ -480,11 +631,18 @@ function auditStylesheets(pages, errors) {
     if (text === null) continue;
     const stylesheets = [...text.matchAll(/<link\b[^>]*>/gi)]
       .map((match) => ({
+        disabled: /(?:^|\s)disabled(?:\s|=|\/>|>)/i.test(match[0]),
         href: attribute(match[0], "href"),
+        media: attribute(match[0], "media"),
         rel: attribute(match[0], "rel"),
       }))
-      .filter(({ rel }) => rel?.toLowerCase().split(/\s+/).includes("stylesheet"));
-    if (stylesheets.length !== 1 || stylesheets[0].href !== "/style.css") {
+      .filter(({ rel }) => rel?.toLowerCase() === "stylesheet");
+    if (
+      stylesheets.length !== 1 ||
+      stylesheets[0].disabled ||
+      stylesheets[0].href !== "/style.css" ||
+      stylesheets[0].media !== null
+    ) {
       errors.push(`${file}: stylesheet must be exactly /style.css`);
     }
   }
@@ -495,8 +653,11 @@ function auditLocalNavigation(pages, errors) {
   for (const [file, text] of pages) {
     if (text === null) continue;
     for (const { href } of allAnchors(text)) {
-      if (href?.startsWith("/") && !localRoutes.has(href)) {
+      if (href === null) continue;
+      if (href.startsWith("/") && !localRoutes.has(href)) {
         errors.push(`${file}: local link does not map to a static route: ${href}`);
+      } else if (!href.startsWith("/") && !/^(?:https?:\/\/|mailto:|tel:)/i.test(href)) {
+        errors.push(`${file}: local links must use exact extensionless absolute routes: ${href}`);
       }
     }
   }
@@ -524,15 +685,34 @@ function auditProhibitedCopy(documents, errors) {
       /\b(?:annual(?:ly)?|monthly|yearly|recurring|auto-renew(?:ing|able)?)\s+(?:subscription|plan|billing|charge|access)\b|\bsubscription\s+(?:plan|price|purchase|billing|renews?|includes?|unlocks?)\b|\b(?:subscribe|automatically\s+renewable|free\s+trial|billed\s+(?:monthly|yearly|annually))\b|\$\s*\d+(?:\.\d{1,2})?\s*(?:\/|per\s+)(?:month|year)\b/i,
       "recurring-commerce sales language",
     ],
-    [/\$\s*\d+(?:\.\d{1,2})?\b/, "numeric purchase price"],
-    [/\bcom\.fiveohninelectric\.trueohm(?:\.[a-z0-9_.-]+)?\b/i, "retired product identifier"],
+    [
+      /\b(?:renews?\s+(?:(?:every|each)\s+)?(?:month(?:ly)?|year(?:ly)?|annual(?:ly)?)|auto-?renews?|automatically\s+renews?|(?:annual|monthly|yearly)\s+membership|recurring\s+(?:payment|charge|billing|plan|access|membership))\b/i,
+      "recurring-commerce sales language",
+    ],
+    [
+      /(?:[$â‚¬€£]\s*\d|\b(?:USD|EUR|GBP|CAD|AUD)\s*\d|\b\d+(?:[.,]\d{1,2})?\s*(?:USD|EUR|GBP|CAD|AUD)\b)/i,
+      "numeric purchase price",
+    ],
+    [/\bcom\.fiveohninelectric\.[a-z0-9_.-]+\.(?:monthly|yearly)\b/i, "retired product identifier"],
   ];
 
   for (const [file, text] of documents) {
     if (text === null) continue;
+    const auditedText = decodeEntities(text);
     for (const [pattern, label] of patterns) {
-      if (pattern.test(text)) errors.push(`${file}: prohibited ${label} is present`);
+      if (pattern.test(auditedText)) errors.push(`${file}: prohibited ${label} is present`);
     }
+  }
+}
+
+function auditStylesheetSource(text, errors) {
+  const renderedCss = text.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ");
+  if (
+    /(?:^|[;{])\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)\s*(?:!\s*important)?\s*(?:;|})/im.test(
+      renderedCss,
+    )
+  ) {
+    errors.push("sites/trueohm/public/style.css: storefront content must remain render-visible");
   }
 }
 
@@ -571,12 +751,14 @@ export function auditRepository(root = repositoryRoot) {
     errors.push("What's New: listing must retain the explicit no-candidate boundary");
   }
 
+  const rawPages = new Map(pageFiles.map((file) => [file, files.get(file)]));
+  for (const [file, text] of rawPages) {
+    if (text !== null) auditHtmlStructure(file, text, errors);
+  }
   const pages = new Map(
-    pageFiles.map((file) => {
-      const text = files.get(file);
-      return [file, text === null ? null : renderedHtml(text)];
-    }),
+    [...rawPages].map(([file, text]) => [file, text === null ? null : renderedHtml(text)]),
   );
+  auditDataCopyInventory(pages, errors);
   for (const field of websiteFields) {
     const text = pages.get(field.file);
     if (text === null) continue;
@@ -590,6 +772,9 @@ export function auditRepository(root = repositoryRoot) {
   auditAppStoreAnchors(pages, errors);
   auditStylesheets(pages, errors);
   auditLocalNavigation(pages, errors);
+  if (files.get("sites/trueohm/public/style.css") !== null) {
+    auditStylesheetSource(files.get("sites/trueohm/public/style.css"), errors);
+  }
   if (files.get("sites/trueohm/wrangler.jsonc") !== null) {
     auditWrangler(files.get("sites/trueohm/wrangler.jsonc"), errors);
   }

@@ -564,6 +564,226 @@ test("approved negative commerce statements remain valid in their assigned pages
   }
 });
 
+test("browser-invalid or non-rendered HTML cannot satisfy the storefront contract", async (t) => {
+  const auditRepository = await loadAudit();
+  const page = "sites/trueohm/public/index.html";
+  const mutations = [
+    [
+      "comment-split App Store href",
+      'href="https://apps.apple.com/app/id6772605137"',
+      'href<!--x-->="https://apps.apple.com/app/id6772605137"',
+    ],
+    ["comment-split canonical rel", 'rel="canonical"', 'rel<!--x-->="canonical"'],
+    ["comment-split stylesheet rel", 'rel="stylesheet"', 'rel<!--x-->="stylesheet"'],
+    ["hero inside noscript", "<h1>", "<noscript><h1>"],
+    ["hero inside noscript close", "</h1>", "</h1></noscript>"],
+    ["hidden main", '<main class="wrap">', '<main class="wrap" hidden>'],
+    [
+      "hidden CTA",
+      '<a class="btn primary" href="https://apps.apple.com/app/id6772605137"',
+      '<a class="btn primary" hidden href="https://apps.apple.com/app/id6772605137"',
+    ],
+    [
+      "wrong CTA accessible label",
+      '<a class="btn primary" href="https://apps.apple.com/app/id6772605137"',
+      '<a class="btn primary" aria-label="Download on Google Play" href="https://apps.apple.com/app/id6772605137"',
+    ],
+    [
+      "indirect CTA accessible label",
+      '<a class="btn primary" href="https://apps.apple.com/app/id6772605137"',
+      '<a class="btn primary" aria-labelledby="wrong-label" href="https://apps.apple.com/app/id6772605137"',
+    ],
+    [
+      "data-href App Store decoy",
+      'href="https://apps.apple.com/app/id6772605137"',
+      'data-href="https://apps.apple.com/app/id6772605137"',
+    ],
+    [
+      "duplicate CTA href",
+      'href="https://apps.apple.com/app/id6772605137"',
+      'href="https://apps.apple.com/app/id6772605137" href="https://example.com"',
+    ],
+    [
+      "disabled stylesheet media",
+      '<link rel="stylesheet" href="/style.css" />',
+      '<link rel="stylesheet" href="/style.css" media="not all" />',
+    ],
+    [
+      "disabled stylesheet",
+      '<link rel="stylesheet" href="/style.css" />',
+      '<link rel="stylesheet" href="/style.css" disabled />',
+    ],
+  ];
+
+  for (const [name, expected, replacement] of mutations) {
+    await t.test(name, () => {
+      const fixtureRoot = makeFixture(t);
+      if (name === "hero inside noscript close") {
+        replaceOnce(fixtureRoot, page, "<h1>", "<noscript><h1>");
+      }
+      replaceOnce(fixtureRoot, page, expected, replacement);
+      assert.notDeepEqual(auditRepository(fixtureRoot), [], `${name} unexpectedly passed`);
+    });
+  }
+
+  await t.test("global CSS hides the storefront", () => {
+    const fixtureRoot = makeFixture(t);
+    const css = "sites/trueohm/public/style.css";
+    replaceOnce(fixtureRoot, css, ":root {", "* { display: none !important; }\n\n:root {");
+    assert.notDeepEqual(auditRepository(fixtureRoot), [], "hidden storefront unexpectedly passed");
+  });
+
+  await t.test("comment-split CSS hides the storefront", () => {
+    const fixtureRoot = makeFixture(t);
+    const css = "sites/trueohm/public/style.css";
+    replaceOnce(fixtureRoot, css, ":root {", "* { display/**/: none; }\n\n:root {");
+    assert.notDeepEqual(auditRepository(fixtureRoot), [], "comment-split hidden CSS passed");
+  });
+});
+
+test("every browser-visible App Store-like anchor is parsed and constrained", async (t) => {
+  const auditRepository = await loadAudit();
+  const page = "sites/trueohm/public/index.html";
+  const mutations = [
+    "<a href=https://apps.apple.com/app/id0000000000>Get it</a>",
+    '<a href="https://apps.apple.com/app/id0000000000">Wrong app</a>',
+  ];
+
+  for (const markup of mutations) {
+    await t.test(markup, () => {
+      const fixtureRoot = makeFixture(t);
+      if (markup.includes("Wrong app")) {
+        replaceOnce(
+          fixtureRoot,
+          page,
+          "Download free on the App Store",
+          `Download free on the App Store ${markup}`,
+        );
+      } else {
+        replaceOnce(fixtureRoot, page, "</main>", `${markup}</main>`);
+      }
+      assert.notDeepEqual(auditRepository(fixtureRoot), [], "wrong App Store anchor passed");
+    });
+  }
+});
+
+test("commerce, price, and retired-product variants fail closed", async (t) => {
+  const auditRepository = await loadAudit();
+  const prohibited = [
+    "Renews every month.",
+    "Annual membership.",
+    "Recurring payment.",
+    "Auto-renews each month.",
+    "Automatically renews annually.",
+    "This purchase renews monthly.",
+    "Unlock for 4.99 USD.",
+    "Unlock for USD 4.99.",
+    "Unlock for â‚¬4.99.",
+    "com.fiveohninelectric.truephase.pro.monthly",
+    "com&#46;fiveohninelectric&#46;truephase&#46;pro&#46;monthly",
+  ];
+
+  for (const copy of prohibited) {
+    await t.test(copy, () => {
+      const fixtureRoot = makeFixture(t);
+      replaceOnce(
+        fixtureRoot,
+        "sites/trueohm/public/index.html",
+        "</main>",
+        `<p>${copy}</p></main>`,
+      );
+      assert.notDeepEqual(auditRepository(fixtureRoot), [], `${copy} unexpectedly passed`);
+    });
+  }
+});
+
+test("marker inventory rejects unknown, hyphenated, duplicate, and wrong-page copy ids", async (t) => {
+  const auditRepository = await loadAudit();
+  const mutations = [
+    [
+      "docs/app-store/listing.md",
+      "## Publication blockers",
+      "<!-- copy:trueohm.unknown-field:start -->X<!-- copy:trueohm.unknown-field:end -->\n\n## Publication blockers",
+    ],
+    [
+      "sites/trueohm/public/index.html",
+      "</main>",
+      '<p data-copy="copy:trueohm.website.unknown-field">X</p></main>',
+    ],
+    [
+      "sites/trueohm/public/support.html",
+      "</main>",
+      '<p data-copy="copy:trueohm.website.local">Duplicate on wrong page</p></main>',
+    ],
+  ];
+
+  for (const [file, expected, replacement] of mutations) {
+    await t.test(file + replacement, () => {
+      const fixtureRoot = makeFixture(t);
+      replaceOnce(fixtureRoot, file, expected, replacement);
+      assert.notDeepEqual(auditRepository(fixtureRoot), [], "marker inventory drift passed");
+    });
+  }
+});
+
+test("package wiring must execute both real test commands", async () => {
+  const auditRepository = await loadAudit();
+  const fixtureRoot = makeFixture({ after: () => {} });
+  try {
+    replaceOnce(
+      fixtureRoot,
+      "package.json",
+      '"test": "node --test scripts/storefront-copy-preflight.test.mjs && pnpm -r test"',
+      '"test": "echo node --test scripts/storefront-copy-preflight.test.mjs && echo pnpm -r test"',
+    );
+    assert.notDeepEqual(auditRepository(fixtureRoot), [], "echo-only test wiring passed");
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("local links must use exact extensionless absolute routes", async () => {
+  const auditRepository = await loadAudit();
+  const fixtureRoot = makeFixture({ after: () => {} });
+  try {
+    replaceOnce(
+      fixtureRoot,
+      "sites/trueohm/public/index.html",
+      'href="/support"',
+      'href="support"',
+    );
+    assert.notDeepEqual(auditRepository(fixtureRoot), [], "relative local route passed");
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("Wrangler JSONC parsing honors comments only outside strings", async (t) => {
+  const auditRepository = await loadAudit();
+  const file = "sites/trueohm/wrangler.jsonc";
+
+  await t.test("comment text cannot repair a wrong string value", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(fixtureRoot, file, '"trueohm"', '"tr/*hidden*/ueohm"');
+    assert.notDeepEqual(
+      auditRepository(fixtureRoot),
+      [],
+      "comment-like string repaired wrong value",
+    );
+  });
+
+  await t.test("valid inline line comments remain parseable", () => {
+    const fixtureRoot = makeFixture(t);
+    replaceOnce(
+      fixtureRoot,
+      file,
+      '"compatibility_date": "2025-01-01",',
+      '"compatibility_date": "2025-01-01", // pinned Worker runtime',
+    );
+    assert.deepEqual(auditRepository(fixtureRoot), []);
+  });
+});
+
 test("listing has no invented What’s New candidate and root test runs this contract", async () => {
   const auditRepository = await loadAudit();
   const fixtureRoot = makeFixture({ after: () => {} });
