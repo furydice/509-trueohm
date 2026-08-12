@@ -77,28 +77,42 @@ function pngChunk(type, data) {
   return Buffer.concat([length, typeBuffer, data, checksum]);
 }
 
-function makePng(width, height, { black = false } = {}) {
+function makePng(width, height, { black = false, colorType = 2, transparency = false } = {}) {
+  const channelsByType = new Map([
+    [0, 1],
+    [2, 3],
+    [4, 2],
+    [6, 4],
+  ]);
+  const channels = channelsByType.get(colorType);
+  assert.ok(channels, `unsupported fixture color type ${colorType}`);
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header[8] = 8;
-  header[9] = 6;
+  header[9] = colorType;
   const rows = [];
   for (let y = 0; y < height; y += 1) {
-    const row = Buffer.alloc(1 + width * 4);
+    const row = Buffer.alloc(1 + width * channels);
     for (let x = 0; x < width; x += 1) {
-      const offset = 1 + x * 4;
+      const offset = 1 + x * channels;
       const light = black ? 0 : (x + y) % 2 === 0 ? 32 : 224;
       row[offset] = light;
-      row[offset + 1] = black ? 0 : 180 - Math.floor(light / 3);
-      row[offset + 2] = black ? 0 : 255 - light;
-      row[offset + 3] = 255;
+      if (colorType === 2 || colorType === 6) {
+        row[offset + 1] = black ? 0 : 180 - Math.floor(light / 3);
+        row[offset + 2] = black ? 0 : 255 - light;
+      }
+      if (colorType === 4 || colorType === 6) row[offset + channels - 1] = 255;
     }
     rows.push(row);
   }
+  const transparencyChunk = transparency
+    ? [pngChunk("tRNS", colorType === 0 ? Buffer.alloc(2) : Buffer.alloc(6))]
+    : [];
   return Buffer.concat([
     Buffer.from("89504e470d0a1a0a", "hex"),
     pngChunk("IHDR", header),
+    ...transparencyChunk,
     pngChunk("IDAT", deflateSync(Buffer.concat(rows))),
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
@@ -223,6 +237,22 @@ test("the UI test target has a unique bundle, host dependency, scheme testable, 
       replaceOnce(root, file, expected, replacement);
       assert.notDeepEqual(auditRepository(root), []);
     });
+  }
+});
+
+test("each UI evidence scene forces portrait and explicitly rewrites persistent state to dark", () => {
+  const uiTests = readFileSync(
+    join(repositoryRoot, "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift"),
+    "utf8",
+  );
+  for (const [required, label] of [
+    ["XCUIDevice.shared.orientation = .portrait", "portrait orientation lock"],
+    ['"-ApplePersistenceIgnoreState", "YES"', "state-restoration reset"],
+    ["resetPersistentEvidenceState()", "per-scene persistent-state reset"],
+    ['button(labeled: "Switch to light mode")', "dark-theme state detection"],
+    ['button(labeled: "Switch to dark mode")', "explicit persisted dark-theme action"],
+  ]) {
+    assert.ok(uiTests.includes(required), `${label} is missing`);
   }
 });
 
@@ -377,5 +407,26 @@ test("materialization fails closed on duplicate, unexpected, wrong-size, or blac
       () => materializeNativeEvidence(root, testDeviceContracts),
       /unexpected attachment/i,
     );
+  });
+});
+
+test("materialization rejects PNG alpha channels and transparency chunks", async (t) => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+
+  for (const colorType of [4, 6]) {
+    await t.test(`color type ${colorType} alpha channel`, () => {
+      const root = makeEvidenceFixture(t);
+      writeFileSync(join(root, "raw-iphone", "iphone-0.png"), makePng(20, 40, { colorType }));
+      assert.throws(
+        () => materializeNativeEvidence(root, testDeviceContracts),
+        /alpha|transparen/i,
+      );
+    });
+  }
+
+  await t.test("tRNS transparency chunk", () => {
+    const root = makeEvidenceFixture(t);
+    writeFileSync(join(root, "raw-ipad", "ipad-0.png"), makePng(30, 40, { transparency: true }));
+    assert.throws(() => materializeNativeEvidence(root, testDeviceContracts), /alpha|transparen/i);
   });
 });

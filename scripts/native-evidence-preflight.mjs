@@ -167,6 +167,10 @@ export function auditRepository(root = repositoryRoot) {
   for (const [expected, label] of [
     ["app.terminate()", "clean app termination"],
     ["app.launch()", "deterministic app launch"],
+    ["XCUIDevice.shared.orientation = .portrait", "portrait orientation lock"],
+    ['"-ApplePersistenceIgnoreState", "YES"', "state-restoration reset"],
+    ['button(labeled: "Switch to light mode")', "dark-theme state detection"],
+    ['button(labeled: "Switch to dark mode")', "explicit persisted dark-theme action"],
     ["XCTAssertTrue", "hard UI assertions"],
     ["XCUIScreen.main.screenshot()", "native screen capture"],
     ["attachment.lifetime = .keepAlways", "retained screenshot attachments"],
@@ -174,6 +178,9 @@ export function auditRepository(root = repositoryRoot) {
     ["pixels.width == 2064 && pixels.height == 2752", "iPad pixel assertion"],
   ]) {
     requireText(errors, uiTests, expected, label);
+  }
+  if (count(uiTests, /resetPersistentEvidenceState\(\)/g) !== 2) {
+    errors.push("UI tests must invoke the persistent-state reset from per-scene setup");
   }
 
   const codemagic = sources.get("codemagic.yaml");
@@ -285,6 +292,9 @@ function inspectPng(buffer) {
   let offset = 8;
   let header;
   const compressed = [];
+  let sawTransparency = false;
+  let sawEnd = false;
+  let chunkIndex = 0;
   while (offset + 12 <= buffer.length) {
     const length = buffer.readUInt32BE(offset);
     const type = buffer.toString("ascii", offset + 4, offset + 8);
@@ -292,30 +302,54 @@ function inspectPng(buffer) {
     const dataEnd = dataStart + length;
     if (dataEnd + 4 > buffer.length) throw new Error("PNG chunk is truncated");
     const data = buffer.subarray(dataStart, dataEnd);
-    if (type === "IHDR") header = Buffer.from(data);
+    if (type === "IHDR") {
+      if (chunkIndex !== 0 || header) throw new Error("PNG IHDR must be the first and only header");
+      header = Buffer.from(data);
+    } else if (!header) {
+      throw new Error("PNG IHDR must precede all other chunks");
+    }
+    if (type === "tRNS") sawTransparency = true;
     if (type === "IDAT") compressed.push(Buffer.from(data));
     offset = dataEnd + 4;
-    if (type === "IEND") break;
+    chunkIndex += 1;
+    if (type === "IEND") {
+      if (length !== 0) throw new Error("PNG IEND chunk must be empty");
+      sawEnd = true;
+      break;
+    }
   }
-  if (!header || header.length !== 13 || compressed.length === 0) {
-    throw new Error("PNG is missing IHDR or IDAT data");
+  if (!header || header.length !== 13 || compressed.length === 0 || !sawEnd) {
+    throw new Error("PNG is missing IHDR, IDAT, or IEND data");
   }
+  if (offset !== buffer.length) throw new Error("PNG has trailing data after IEND");
 
   const width = header.readUInt32BE(0);
   const height = header.readUInt32BE(4);
   const bitDepth = header[8];
   const colorType = header[9];
+  const compression = header[10];
+  const filterMethod = header[11];
   const interlace = header[12];
+  if (colorType === 4 || colorType === 6) {
+    throw new Error(`PNG alpha channels are not allowed (color type ${colorType})`);
+  }
+  if (sawTransparency) throw new Error("PNG transparency chunks are not allowed");
   const channelsByType = new Map([
     [0, 1],
     [2, 3],
-    [4, 2],
-    [6, 4],
   ]);
   const channels = channelsByType.get(colorType);
-  if (bitDepth !== 8 || !channels || interlace !== 0) {
+  if (
+    width === 0 ||
+    height === 0 ||
+    bitDepth !== 8 ||
+    !channels ||
+    compression !== 0 ||
+    filterMethod !== 0 ||
+    interlace !== 0
+  ) {
     throw new Error(
-      `unsupported PNG format: depth=${bitDepth}, color=${colorType}, interlace=${interlace}`,
+      `unsupported PNG format: size=${width}x${height}, depth=${bitDepth}, color=${colorType}, compression=${compression}, filter=${filterMethod}, interlace=${interlace}`,
     );
   }
 
@@ -363,8 +397,8 @@ function inspectPng(buffer) {
     for (let x = 0; x < width; x += pixelStride) {
       const pixel = x * channels;
       const red = current[pixel];
-      const green = colorType === 0 || colorType === 4 ? red : current[pixel + 1];
-      const blue = colorType === 0 || colorType === 4 ? red : current[pixel + 2];
+      const green = colorType === 0 ? red : current[pixel + 1];
+      const blue = colorType === 0 ? red : current[pixel + 2];
       const luminance = (red + green + blue) / 3;
       minimum = Math.min(minimum, luminance);
       maximum = Math.max(maximum, luminance);

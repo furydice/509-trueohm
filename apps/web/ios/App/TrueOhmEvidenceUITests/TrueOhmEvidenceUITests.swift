@@ -6,21 +6,29 @@ final class TrueOhmEvidenceUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
         app.terminate()
         app.launchArguments = [
             "-AppleLanguages", "(en)",
             "-AppleLocale", "en_US",
             "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+            "-ApplePersistenceIgnoreState", "YES",
         ]
         app.launch()
 
+        XCTAssertEqual(
+            XCUIDevice.shared.orientation,
+            .portrait,
+            "Evidence capture must remain in portrait orientation"
+        )
         let webView = app.webViews.firstMatch
         XCTAssertTrue(webView.waitForExistence(timeout: 20), "TrueOhm web view did not launch")
         XCTAssertTrue(
             element(labeled: "Power").waitForExistence(timeout: 15),
             "Default Ohm's Law result did not render"
         )
+        resetPersistentEvidenceState()
     }
 
     override func tearDownWithError() throws {
@@ -90,6 +98,28 @@ final class TrueOhmEvidenceUITests: XCTestCase {
         XCTAssertTrue(element(labeled: "watts").exists, "Default Ohm's Law result unit is missing")
         XCTAssertEqual(textField(labeled: "Voltage").value as? String, "120")
         XCTAssertEqual(textField(labeled: "Resistance").value as? String, "10")
+    }
+
+    /// Runs only in the evidence UI-test target. Toggling through the real control
+    /// rewrites WebKit localStorage on every scene and always leaves the app dark.
+    private func resetPersistentEvidenceState() {
+        let switchToLight = button(labeled: "Switch to light mode")
+        if switchToLight.exists {
+            XCTAssertTrue(switchToLight.isHittable, "Dark-theme control is not hittable")
+            switchToLight.tap()
+        }
+
+        let switchToDark = button(labeled: "Switch to dark mode")
+        XCTAssertTrue(
+            switchToDark.waitForExistence(timeout: 5),
+            "The persisted theme could not be moved to light before reset"
+        )
+        XCTAssertTrue(switchToDark.isHittable, "Light-theme control is not hittable")
+        switchToDark.tap()
+        XCTAssertTrue(
+            switchToLight.waitForExistence(timeout: 5),
+            "The persisted evidence theme did not reset to dark"
+        )
     }
 
     private func tapMode(_ label: String) {
