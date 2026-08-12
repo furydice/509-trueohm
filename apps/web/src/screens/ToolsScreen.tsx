@@ -84,7 +84,7 @@ export function ToolsScreen({ onBack }: ToolsScreenProps): JSX.Element {
         ))}
       </div>
 
-      <p className="tools-footer-note">TrueOhm is free from 509 Electric.</p>
+      <p className="tools-footer-note">TrueOhm is free, works offline, and requires no account.</p>
     </div>
   );
 }

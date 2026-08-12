@@ -1,13 +1,13 @@
 {
   "name": "@509-trueohm/web",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run --pool=forks",
+    "test": "node --test ../../scripts/native-evidence-preflight.test.mjs && vitest run --pool=forks",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "cap:add:ios": "cap add ios",

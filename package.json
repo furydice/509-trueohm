@@ -1,7 +1,7 @@
 {
   "name": "509-trueohm",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.1",
   "scripts": {
     "test": "node --test scripts/storefront-copy-preflight.test.mjs && pnpm -r test",
     "storefront:preflight": "node scripts/storefront-copy-preflight.mjs",

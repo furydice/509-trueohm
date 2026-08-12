@@ -1,0 +1,159 @@
+import UIKit
+import XCTest
+
+final class TrueOhmEvidenceUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+        ]
+        app.launch()
+
+        let webView = app.webViews.firstMatch
+        XCTAssertTrue(webView.waitForExistence(timeout: 20), "TrueOhm web view did not launch")
+        XCTAssertTrue(
+            element(labeled: "Power").waitForExistence(timeout: 15),
+            "Default Ohm's Law result did not render"
+        )
+    }
+
+    override func tearDownWithError() throws {
+        app?.terminate()
+        app = nil
+    }
+
+    func test01OhmsLaw() {
+        assertDefaultOhmsLaw()
+        capture("01-ohms-law")
+    }
+
+    func test02ShowWork() {
+        assertDefaultOhmsLaw()
+        let showWork = button(labeled: "How this was calculated")
+        XCTAssertTrue(showWork.waitForExistence(timeout: 10), "Show-work control is missing")
+        XCTAssertTrue(showWork.isHittable, "Show-work control is not hittable")
+        showWork.tap()
+        XCTAssertTrue(
+            element(containing: "P = V² / R").waitForExistence(timeout: 10),
+            "The expanded Ohm's Law formula did not appear"
+        )
+        capture("02-show-work")
+    }
+
+    func test03ACPower() {
+        tapMode("AC Power")
+        XCTAssertTrue(
+            element(labeled: "Real Power").waitForExistence(timeout: 10),
+            "AC Power result did not render"
+        )
+        XCTAssertTrue(element(labeled: "70.668").exists, "Default AC result is not 70.668 kW")
+        XCTAssertTrue(element(labeled: "kW").exists, "Default AC result unit is missing")
+        XCTAssertEqual(textField(labeled: "Voltage (L-L for 3Ø)").value as? String, "480")
+        XCTAssertEqual(textField(labeled: "Current").value as? String, "100")
+        XCTAssertEqual(textField(labeled: "Power factor").value as? String, "0.85")
+        capture("03-ac-power")
+    }
+
+    func test04PowerTriangle() {
+        tapMode("Power Triangle")
+        XCTAssertTrue(
+            element(labeled: "Apparent Power").waitForExistence(timeout: 10),
+            "Power Triangle result did not render"
+        )
+        XCTAssertTrue(element(labeled: "100").exists, "Default triangle result is not 100 kVA")
+        XCTAssertTrue(element(labeled: "kVA").exists, "Default triangle result unit is missing")
+        XCTAssertEqual(textField(labeled: "Real power").value as? String, "80")
+        XCTAssertEqual(textField(labeled: "Apparent power").value as? String, "100")
+        capture("04-power-triangle")
+    }
+
+    func test05FreeOfflineNoAccount() {
+        let moreTools = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "More 509 Tools")
+        ).firstMatch
+        scrollUntilHittable(moreTools, description: "More 509 Tools")
+        moreTools.tap()
+
+        let promise = element(labeled: "TrueOhm is free, works offline, and requires no account.")
+        XCTAssertTrue(promise.waitForExistence(timeout: 10), "Free/offline/no-account promise is missing")
+        capture("05-free-offline-no-account")
+    }
+
+    private func assertDefaultOhmsLaw() {
+        XCTAssertTrue(element(labeled: "1,440").exists, "Default Ohm's Law result is not 1,440 W")
+        XCTAssertTrue(element(labeled: "watts").exists, "Default Ohm's Law result unit is missing")
+        XCTAssertEqual(textField(labeled: "Voltage").value as? String, "120")
+        XCTAssertEqual(textField(labeled: "Resistance").value as? String, "10")
+    }
+
+    private func tapMode(_ label: String) {
+        let mode = button(labeled: label)
+        scrollUntilHittable(mode, description: label, horizontal: true)
+        mode.tap()
+    }
+
+    private func scrollUntilHittable(
+        _ target: XCUIElement,
+        description: String,
+        horizontal: Bool = false
+    ) {
+        let webView = app.webViews.firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 10), "\(description) is missing")
+        for _ in 0..<8 where !target.isHittable {
+            if horizontal {
+                webView.swipeLeft()
+            } else {
+                webView.swipeUp()
+            }
+        }
+        XCTAssertTrue(target.isHittable, "\(description) remained non-hittable after scrolling")
+    }
+
+    private func button(labeled label: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func textField(labeled label: String) -> XCUIElement {
+        app.textFields.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func element(labeled label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func element(containing label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", label)
+        ).firstMatch
+    }
+
+    private func capture(_ name: String) {
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+        let screenshot = XCUIScreen.main.screenshot()
+        let png = screenshot.pngRepresentation
+        XCTAssertGreaterThan(png.count, 50_000, "\(name) is implausibly small")
+
+        guard let image = UIImage(data: png), let pixels = image.cgImage else {
+            XCTFail("\(name) is not a decodable PNG screenshot")
+            return
+        }
+        let supportedSize =
+            (pixels.width == 1320 && pixels.height == 2868) ||
+            (pixels.width == 2064 && pixels.height == 2752)
+        XCTAssertTrue(
+            supportedSize,
+            "\(name) has unexpected dimensions \(pixels.width) x \(pixels.height)"
+        )
+
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}

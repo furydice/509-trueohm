@@ -3,6 +3,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ToolsScreen } from "./ToolsScreen";
 
 describe("ToolsScreen", () => {
+  it("states the free, offline, and no-account promise exactly", () => {
+    render(<ToolsScreen onBack={() => {}} />);
+    expect(
+      screen.getByText("TrueOhm is free, works offline, and requires no account."),
+    ).toBeTruthy();
+  });
+
   it("shows only TruePhase and does not call paid siblings free", () => {
     render(<ToolsScreen onBack={() => {}} />);
     expect(screen.getByText(/More.*Tools/)).toBeTruthy();
