@@ -551,7 +551,9 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
   const sourceSha = decodeFile(join(root, "source-sha.txt")).trim();
   if (!/^[a-f0-9]{40}$/.test(sourceSha)) throw new Error("source SHA is invalid");
   const xcodeVersion = decodeFile(join(root, "xcode-version.txt")).trim();
-  if (!/^Xcode\s+/m.test(xcodeVersion)) throw new Error("Xcode version record is invalid");
+  if (!/^Xcode 26\.4(?:\.\d+)?\r?\nBuild version [^\r\n]+$/.test(xcodeVersion)) {
+    throw new Error("Xcode version record must use Xcode 26.4.x");
+  }
   const simulatorRecord = JSON.parse(decodeFile(join(root, "simulator-contract.json")));
 
   for (const device of Object.keys(contracts)) {

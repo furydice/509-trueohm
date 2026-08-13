@@ -606,6 +606,17 @@ test("materialization rejects a simulator contract from outside the pinned iOS 2
   }
 });
 
+test("materialization rejects evidence produced by a non-Xcode 26.4 toolchain", () => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+  const root = makeEvidenceFixture({ after: () => {} });
+  try {
+    writeFileSync(join(root, "xcode-version.txt"), "Xcode 26.3\nBuild version 17C529\n");
+    assert.throws(() => materializeNativeEvidence(root, testDeviceContracts), /Xcode 26\.4/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("materialization fails closed on duplicate, unexpected, wrong-size, or black screenshots", async (t) => {
   const materializeNativeEvidence = requireExport("materializeNativeEvidence");
 
