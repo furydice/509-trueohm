@@ -334,8 +334,8 @@ test("the evidence workflow pins Xcode, runtime, UDID destinations, and the rema
   )?.[0];
   assert.ok(evidence, "TrueOhm evidence workflow is missing");
   assert.match(evidence, /\n\s+xcode: 26\.4\s*\n/);
-  assert.match(evidence, /max_build_duration: 29/);
-  assert.ok(29 + 45 + 45 <= 119, "configured evidence maxima exceed remaining approval");
+  assert.match(evidence, /max_build_duration: 24/);
+  assert.equal(6 + 24 + 45 + 45, 120, "configured maxima must include the six minutes used");
   assert.match(evidence, /resolve-simulators/);
   assert.match(evidence, /destination[^\n]*iphone/);
   assert.match(evidence, /destination[^\n]*ipad/);
@@ -403,6 +403,16 @@ test("the UI test target has a unique bundle, host dependency, scheme testable, 
       'capture("05-free-offline-no-account")',
       'capture("05-skipped")',
     ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      "modeSwitcher.swipeLeft()",
+      "app.webViews.firstMatch.swipeLeft()",
+    ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      "modeSwitcher.descendants(matching: .any)",
+      "modeSwitcher.buttons",
+    ],
   ];
 
   for (const [file, expected, replacement] of mutations) {
@@ -430,6 +440,34 @@ test("each UI evidence scene forces portrait and explicitly rewrites persistent 
   }
 });
 
+test("mode navigation uses an exact type-agnostic scoped query with swipe-requery fallback", () => {
+  const uiTests = readFileSync(
+    join(repositoryRoot, "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift"),
+    "utf8",
+  );
+  const tapMode = uiTests.slice(
+    uiTests.indexOf("private func tapMode"),
+    uiTests.indexOf("private func scrollUntilHittable"),
+  );
+  assert.match(tapMode, /let modeSwitcher = element\(labeled: "Calculator mode"\)/);
+  assert.match(tapMode, /modeSwitcher\.descendants\(matching: \.any\)/);
+  assert.doesNotMatch(tapMode, /(?:app|modeSwitcher)\.buttons/);
+  assert.match(tapMode, /NSPredicate\(format: "label == %@", label\)/);
+  const initialQuery = tapMode.indexOf("var mode = queryMode()");
+  const horizontalSwipe = tapMode.indexOf("modeSwitcher.swipeLeft()");
+  const fallbackRequery = tapMode.indexOf("\n            mode = queryMode()");
+  const targetExistenceAssertion = tapMode.indexOf("mode.waitForExistence");
+  assert.ok(initialQuery >= 0, "mode navigation does not run its exact scoped query");
+  assert.ok(horizontalSwipe >= 0, "horizontal mode discovery does not swipe its real switcher");
+  assert.ok(
+    initialQuery < horizontalSwipe &&
+      horizontalSwipe < fallbackRequery &&
+      fallbackRequery < targetExistenceAssertion,
+    "mode navigation must query, swipe, requery, then make its hard existence assertion",
+  );
+  assert.match(tapMode, /XCTAssertTrue\(mode\.isHittable/);
+});
+
 test("the manual workflow is unsigned, artifact-only, exact-device, and runs all gates", async (t) => {
   const auditRepository = requireExport("auditRepository");
   const mutations = [
@@ -442,7 +480,7 @@ test("the manual workflow is unsigned, artifact-only, exact-device, and runs all
       "    publishing:\n      email:\n        recipients: []\n    artifacts:\n      - native-evidence/**/*",
     ],
     ["xcode: 26.4", "xcode: latest"],
-    ["max_build_duration: 29", "max_build_duration: 30"],
+    ["max_build_duration: 24", "max_build_duration: 25"],
     ['resolve-simulators "$EVIDENCE_DIR"', 'resolve-simulators "$CM_BUILD_DIR"'],
     [
       'destination "$CM_BUILD_DIR/native-evidence" iphone',

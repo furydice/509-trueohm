@@ -226,6 +226,10 @@ export function auditRepository(root = repositoryRoot) {
     ['"-ApplePersistenceIgnoreState", "YES"', "state-restoration reset"],
     ['button(labeled: "Switch to light mode")', "dark-theme state detection"],
     ['button(labeled: "Switch to dark mode")', "explicit persisted dark-theme action"],
+    ['element(labeled: "Calculator mode")', "real calculator-mode switcher lookup"],
+    ["modeSwitcher.descendants(matching: .any)", "type-agnostic scoped mode lookup"],
+    ["modeSwitcher.swipeLeft()", "offscreen mode discovery gesture"],
+    ["mode = queryMode()", "post-swipe mode requery"],
     ["XCTAssertTrue", "hard UI assertions"],
     ["XCUIScreen.main.screenshot()", "native screen capture"],
     ["attachment.lifetime = .keepAlways", "retained screenshot attachments"],
@@ -236,6 +240,31 @@ export function auditRepository(root = repositoryRoot) {
   }
   if (count(uiTests, /resetPersistentEvidenceState\(\)/g) !== 2) {
     errors.push("UI tests must invoke the persistent-state reset from per-scene setup");
+  }
+  const tapMode = uiTests.slice(
+    uiTests.indexOf("private func tapMode"),
+    uiTests.indexOf("private func scrollUntilHittable"),
+  );
+  const initialQueryIndex = tapMode.indexOf("var mode = queryMode()");
+  const horizontalSwipeIndex = tapMode.indexOf("modeSwitcher.swipeLeft()");
+  const fallbackQueryIndex = tapMode.indexOf("\n            mode = queryMode()");
+  const targetExistenceIndex = tapMode.indexOf("mode.waitForExistence");
+  if (
+    initialQueryIndex < 0 ||
+    horizontalSwipeIndex < 0 ||
+    fallbackQueryIndex < 0 ||
+    targetExistenceIndex < 0 ||
+    initialQueryIndex > horizontalSwipeIndex ||
+    horizontalSwipeIndex > fallbackQueryIndex ||
+    fallbackQueryIndex > targetExistenceIndex
+  ) {
+    errors.push("UI tests must query, swipe, requery, then assert mode existence");
+  }
+  if (/(?:app|modeSwitcher)\.buttons/.test(tapMode)) {
+    errors.push("UI tests must not restrict ARIA mode controls to the XCUI button type");
+  }
+  if (!tapMode.includes('NSPredicate(format: "label == %@", label)')) {
+    errors.push("UI tests must retain exact mode labels inside the calculator-mode switcher");
   }
 
   const codemagic = sources.get("codemagic.yaml");
@@ -281,7 +310,7 @@ export function auditRepository(root = repositoryRoot) {
     for (const [expected, label] of [
       ["name: TrueOhm iOS Screenshot Evidence", "workflow display name"],
       ["xcode: 26.4", "pinned Xcode 26.4 image"],
-      ["max_build_duration: 29", "29-minute workflow cap"],
+      ["max_build_duration: 24", "24-minute workflow cap"],
       ["pnpm install --frozen-lockfile", "frozen install"],
       ["pnpm lint", "lint gate"],
       ["pnpm typecheck", "typecheck gate"],
@@ -319,8 +348,12 @@ export function auditRepository(root = repositoryRoot) {
       errors.push("evidence workflow must run exactly two native UI-test commands");
     }
     const cap = Number(evidenceWorkflow.match(/max_build_duration:\s*(\d+)/)?.[1]);
-    if (!Number.isInteger(cap) || cap + 45 + 45 > 119) {
-      errors.push("evidence workflow maxima must fit the remaining 119 approved macOS minutes");
+    const approvedMinutes = 120;
+    const usedMinutes = 6;
+    if (!Number.isInteger(cap) || usedMinutes + cap + 45 + 45 > approvedMinutes) {
+      errors.push(
+        "evidence workflow maxima plus six used minutes must fit the 120-minute approval",
+      );
     }
     if (/-destination ['"]platform=iOS Simulator,name=/.test(evidenceWorkflow)) {
       errors.push("evidence workflow must not select simulators by ambiguous device name");

@@ -123,24 +123,34 @@ final class TrueOhmEvidenceUITests: XCTestCase {
     }
 
     private func tapMode(_ label: String) {
-        let mode = button(labeled: label)
-        scrollUntilHittable(mode, description: label, horizontal: true)
+        let modeSwitcher = element(labeled: "Calculator mode")
+        XCTAssertTrue(
+            modeSwitcher.waitForExistence(timeout: 10),
+            "Calculator mode switcher is missing"
+        )
+        let queryMode = {
+            modeSwitcher.descendants(matching: .any).matching(
+                NSPredicate(format: "label == %@", label)
+            ).firstMatch
+        }
+        var mode = queryMode()
+        for _ in 0..<8 where !mode.isHittable {
+            modeSwitcher.swipeLeft()
+            mode = queryMode()
+        }
+        XCTAssertTrue(mode.waitForExistence(timeout: 10), "\(label) is missing")
+        XCTAssertTrue(mode.isHittable, "\(label) remained non-hittable after scrolling")
         mode.tap()
     }
 
     private func scrollUntilHittable(
         _ target: XCUIElement,
-        description: String,
-        horizontal: Bool = false
+        description: String
     ) {
         let webView = app.webViews.firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 10), "\(description) is missing")
         for _ in 0..<8 where !target.isHittable {
-            if horizontal {
-                webView.swipeLeft()
-            } else {
-                webView.swipeUp()
-            }
+            webView.swipeUp()
         }
         XCTAssertTrue(target.isHittable, "\(description) remained non-hittable after scrolling")
     }
