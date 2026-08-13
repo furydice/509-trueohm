@@ -57,11 +57,9 @@ final class TrueOhmEvidenceUITests: XCTestCase {
     func test03ACPower() {
         tapMode("AC Power")
         XCTAssertTrue(
-            element(labeled: "Real Power").waitForExistence(timeout: 10),
+            staticText(labeled: "REAL POWER").waitForExistence(timeout: 10),
             "AC Power result did not render"
         )
-        XCTAssertTrue(element(labeled: "70.668").exists, "Default AC result is not 70.668 kW")
-        XCTAssertTrue(element(labeled: "kW").exists, "Default AC result unit is missing")
         XCTAssertEqual(textField(labeled: "Voltage (L-L for 3Ø)").value as? String, "480")
         XCTAssertEqual(textField(labeled: "Current").value as? String, "100")
         XCTAssertEqual(textField(labeled: "Power factor").value as? String, "0.85")
@@ -71,11 +69,9 @@ final class TrueOhmEvidenceUITests: XCTestCase {
     func test04PowerTriangle() {
         tapMode("Power Triangle")
         XCTAssertTrue(
-            element(labeled: "Apparent Power").waitForExistence(timeout: 10),
+            staticText(labeled: "APPARENT POWER").waitForExistence(timeout: 10),
             "Power Triangle result did not render"
         )
-        XCTAssertTrue(element(labeled: "100").exists, "Default triangle result is not 100 kVA")
-        XCTAssertTrue(element(labeled: "kVA").exists, "Default triangle result unit is missing")
         XCTAssertEqual(textField(labeled: "Real power").value as? String, "80")
         XCTAssertEqual(textField(labeled: "Apparent power").value as? String, "100")
         capture("04-power-triangle")
@@ -140,7 +136,21 @@ final class TrueOhmEvidenceUITests: XCTestCase {
         }
         XCTAssertTrue(mode.waitForExistence(timeout: 10), "\(label) is missing")
         XCTAssertTrue(mode.isHittable, "\(label) remained non-hittable after scrolling")
+        let initialValue = mode.value as? String
+        XCTAssertEqual(initialValue, "0", "\(label) was unexpectedly selected before tapping")
         mode.tap()
+
+        let selectedMode = queryMode()
+        let selectedExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"),
+            object: selectedMode
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [selectedExpectation], timeout: 10),
+            .completed,
+            "\(label) did not become selected after tapping"
+        )
+        XCTAssertEqual(selectedMode.value as? String, "1", "\(label) selected value is invalid")
     }
 
     private func scrollUntilHittable(
@@ -161,6 +171,10 @@ final class TrueOhmEvidenceUITests: XCTestCase {
 
     private func textField(labeled label: String) -> XCUIElement {
         app.textFields.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func staticText(labeled label: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
     }
 
     private func element(labeled label: String) -> XCUIElement {

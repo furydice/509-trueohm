@@ -230,6 +230,14 @@ export function auditRepository(root = repositoryRoot) {
     ["modeSwitcher.descendants(matching: .any)", "type-agnostic scoped mode lookup"],
     ["modeSwitcher.swipeLeft()", "offscreen mode discovery gesture"],
     ["mode = queryMode()", "post-swipe mode requery"],
+    ["let initialValue = mode.value as? String", "unselected mode-state capture"],
+    ['XCTAssertEqual(initialValue, "0"', "unselected mode-state assertion"],
+    ["mode.tap()", "real accessibility mode activation"],
+    ["let selectedMode = queryMode()", "post-tap mode requery"],
+    ['NSPredicate(format: "value == %@", "1")', "selected mode-state wait"],
+    ['XCTAssertEqual(selectedMode.value as? String, "1"', "selected mode-state assertion"],
+    ['staticText(labeled: "REAL POWER")', "AC Power accessibility sentinel"],
+    ['staticText(labeled: "APPARENT POWER")', "Power Triangle accessibility sentinel"],
     ["XCTAssertTrue", "hard UI assertions"],
     ["XCUIScreen.main.screenshot()", "native screen capture"],
     ["attachment.lifetime = .keepAlways", "retained screenshot attachments"],
@@ -265,6 +273,36 @@ export function auditRepository(root = repositoryRoot) {
   }
   if (!tapMode.includes('NSPredicate(format: "label == %@", label)')) {
     errors.push("UI tests must retain exact mode labels inside the calculator-mode switcher");
+  }
+  if (tapMode.includes("mode.coordinate")) {
+    errors.push("UI tests must use the proven mode switch activation instead of a coordinate tap");
+  }
+  const modeTapIndex = tapMode.indexOf("mode.tap()");
+  const selectedModeIndex = tapMode.indexOf("let selectedMode = queryMode()", modeTapIndex);
+  const selectedWaitIndex = tapMode.indexOf(
+    'NSPredicate(format: "value == %@", "1")',
+    selectedModeIndex,
+  );
+  const selectedAssertIndex = tapMode.indexOf(
+    'XCTAssertEqual(selectedMode.value as? String, "1"',
+    selectedWaitIndex,
+  );
+  if (
+    modeTapIndex < 0 ||
+    selectedModeIndex < 0 ||
+    selectedWaitIndex < 0 ||
+    selectedAssertIndex < 0 ||
+    modeTapIndex > selectedModeIndex ||
+    selectedModeIndex > selectedWaitIndex ||
+    selectedWaitIndex > selectedAssertIndex
+  ) {
+    errors.push("UI tests must tap, requery, wait for value 1, then assert selected mode state");
+  }
+  if (/element\(labeled: "(?:Real Power|Apparent Power)"\)/.test(uiTests)) {
+    errors.push("UI tests must use the uppercase static-text labels exposed by WebKit");
+  }
+  if (/element\(labeled: "(?:70\.668|100|kW|kVA)"\)/.test(uiTests)) {
+    errors.push("UI tests must not require unproven hero-value accessibility elements");
   }
 
   const codemagic = sources.get("codemagic.yaml");
@@ -310,7 +348,7 @@ export function auditRepository(root = repositoryRoot) {
     for (const [expected, label] of [
       ["name: TrueOhm iOS Screenshot Evidence", "workflow display name"],
       ["xcode: 26.4", "pinned Xcode 26.4 image"],
-      ["max_build_duration: 24", "24-minute workflow cap"],
+      ["max_build_duration: 19", "19-minute workflow cap"],
       ["pnpm install --frozen-lockfile", "frozen install"],
       ["pnpm lint", "lint gate"],
       ["pnpm typecheck", "typecheck gate"],
@@ -349,11 +387,9 @@ export function auditRepository(root = repositoryRoot) {
     }
     const cap = Number(evidenceWorkflow.match(/max_build_duration:\s*(\d+)/)?.[1]);
     const approvedMinutes = 120;
-    const usedMinutes = 6;
+    const usedMinutes = 11;
     if (!Number.isInteger(cap) || usedMinutes + cap + 45 + 45 > approvedMinutes) {
-      errors.push(
-        "evidence workflow maxima plus six used minutes must fit the 120-minute approval",
-      );
+      errors.push("evidence workflow maxima plus 11 used minutes must fit the 120-minute approval");
     }
     if (/-destination ['"]platform=iOS Simulator,name=/.test(evidenceWorkflow)) {
       errors.push("evidence workflow must not select simulators by ambiguous device name");

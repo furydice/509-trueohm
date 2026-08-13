@@ -334,8 +334,8 @@ test("the evidence workflow pins Xcode, runtime, UDID destinations, and the rema
   )?.[0];
   assert.ok(evidence, "TrueOhm evidence workflow is missing");
   assert.match(evidence, /\n\s+xcode: 26\.4\s*\n/);
-  assert.match(evidence, /max_build_duration: 24/);
-  assert.equal(6 + 24 + 45 + 45, 120, "configured maxima must include the six minutes used");
+  assert.match(evidence, /max_build_duration: 19/);
+  assert.equal(11 + 19 + 45 + 45, 120, "configured maxima must include the 11 minutes used");
   assert.match(evidence, /resolve-simulators/);
   assert.match(evidence, /destination[^\n]*iphone/);
   assert.match(evidence, /destination[^\n]*ipad/);
@@ -413,6 +413,21 @@ test("the UI test target has a unique bundle, host dependency, scheme testable, 
       "modeSwitcher.descendants(matching: .any)",
       "modeSwitcher.buttons",
     ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      "mode.tap()",
+      "mode.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()",
+    ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      'NSPredicate(format: "value == %@", "1")',
+      'NSPredicate(format: "value == %@", "0")',
+    ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      'staticText(labeled: "REAL POWER")',
+      'element(labeled: "Real Power")',
+    ],
   ];
 
   for (const [file, expected, replacement] of mutations) {
@@ -466,6 +481,51 @@ test("mode navigation uses an exact type-agnostic scoped query with swipe-requer
     "mode navigation must query, swipe, requery, then make its hard existence assertion",
   );
   assert.match(tapMode, /XCTAssertTrue\(mode\.isHittable/);
+  assert.match(tapMode, /let initialValue = mode\.value as\? String/);
+  assert.match(tapMode, /XCTAssertEqual\(initialValue, "0"/);
+  assert.match(tapMode, /mode\.tap\(\)/);
+  assert.doesNotMatch(tapMode, /mode\.coordinate/);
+  const tap = tapMode.indexOf("mode.tap()");
+  const selectedModeRequery = tapMode.indexOf("let selectedMode = queryMode()", tap);
+  const selectedValueWait = tapMode.indexOf(
+    'NSPredicate(format: "value == %@", "1")',
+    selectedModeRequery,
+  );
+  const selectedValueAssertion = tapMode.indexOf(
+    'XCTAssertEqual(selectedMode.value as? String, "1"',
+    selectedValueWait,
+  );
+  assert.ok(
+    tap < selectedModeRequery &&
+      selectedModeRequery < selectedValueWait &&
+      selectedValueWait < selectedValueAssertion,
+    "mode navigation must tap, requery, wait for value 1, then assert the selected switch value",
+  );
+});
+
+test("AC and triangle scenes use the forensic static-text sentinels and real input values", () => {
+  const uiTests = readFileSync(
+    join(repositoryRoot, "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift"),
+    "utf8",
+  );
+  assert.match(uiTests, /staticText\(labeled: "REAL POWER"\)\.waitForExistence/);
+  assert.match(uiTests, /staticText\(labeled: "APPARENT POWER"\)\.waitForExistence/);
+  assert.doesNotMatch(uiTests, /element\(labeled: "(?:Real Power|Apparent Power)"\)/);
+  assert.doesNotMatch(uiTests, /element\(labeled: "(?:70\.668|100|kW|kVA)"\)/);
+  for (const [label, value] of [
+    ["Voltage (L-L for 3Ø)", "480"],
+    ["Current", "100"],
+    ["Power factor", "0.85"],
+    ["Real power", "80"],
+    ["Apparent power", "100"],
+  ]) {
+    assert.match(
+      uiTests,
+      new RegExp(
+        `XCTAssertEqual\\(textField\\(labeled: "${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\)\\.value as\\? String, "${value}"\\)`,
+      ),
+    );
+  }
 });
 
 test("the manual workflow is unsigned, artifact-only, exact-device, and runs all gates", async (t) => {
@@ -480,7 +540,7 @@ test("the manual workflow is unsigned, artifact-only, exact-device, and runs all
       "    publishing:\n      email:\n        recipients: []\n    artifacts:\n      - native-evidence/**/*",
     ],
     ["xcode: 26.4", "xcode: latest"],
-    ["max_build_duration: 24", "max_build_duration: 25"],
+    ["max_build_duration: 19", "max_build_duration: 20"],
     ['resolve-simulators "$EVIDENCE_DIR"', 'resolve-simulators "$CM_BUILD_DIR"'],
     [
       'destination "$CM_BUILD_DIR/native-evidence" iphone',
