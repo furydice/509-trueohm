@@ -238,6 +238,10 @@ export function auditRepository(root = repositoryRoot) {
     ['XCTAssertEqual(selectedMode.value as? String, "1"', "selected mode-state assertion"],
     ['staticText(labeled: "REAL POWER")', "AC Power accessibility sentinel"],
     ['staticText(labeled: "APPARENT POWER")', "Power Triangle accessibility sentinel"],
+    ['staticText(labeled: "70.668")', "AC Power result accessibility value"],
+    ['staticText(labeled: "kW")', "AC Power result accessibility unit"],
+    ['staticText(labeled: "100")', "Power Triangle result accessibility value"],
+    ['staticText(labeled: "kVA")', "Power Triangle result accessibility unit"],
     ["XCTAssertTrue", "hard UI assertions"],
     ["XCUIScreen.main.screenshot()", "native screen capture"],
     ["attachment.lifetime = .keepAlways", "retained screenshot attachments"],
@@ -302,7 +306,7 @@ export function auditRepository(root = repositoryRoot) {
     errors.push("UI tests must use the uppercase static-text labels exposed by WebKit");
   }
   if (/element\(labeled: "(?:70\.668|100|kW|kVA)"\)/.test(uiTests)) {
-    errors.push("UI tests must not require unproven hero-value accessibility elements");
+    errors.push("UI tests must query proven hero values and units through app.staticTexts");
   }
 
   const codemagic = sources.get("codemagic.yaml");

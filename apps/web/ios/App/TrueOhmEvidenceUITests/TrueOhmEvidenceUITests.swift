@@ -60,6 +60,8 @@ final class TrueOhmEvidenceUITests: XCTestCase {
             staticText(labeled: "REAL POWER").waitForExistence(timeout: 10),
             "AC Power result did not render"
         )
+        XCTAssertTrue(staticText(labeled: "70.668").exists, "Default AC result is not 70.668 kW")
+        XCTAssertTrue(staticText(labeled: "kW").exists, "Default AC result unit is missing")
         XCTAssertEqual(textField(labeled: "Voltage (L-L for 3Ø)").value as? String, "480")
         XCTAssertEqual(textField(labeled: "Current").value as? String, "100")
         XCTAssertEqual(textField(labeled: "Power factor").value as? String, "0.85")
@@ -72,6 +74,8 @@ final class TrueOhmEvidenceUITests: XCTestCase {
             staticText(labeled: "APPARENT POWER").waitForExistence(timeout: 10),
             "Power Triangle result did not render"
         )
+        XCTAssertTrue(staticText(labeled: "100").exists, "Default triangle result is not 100 kVA")
+        XCTAssertTrue(staticText(labeled: "kVA").exists, "Default triangle result unit is missing")
         XCTAssertEqual(textField(labeled: "Real power").value as? String, "80")
         XCTAssertEqual(textField(labeled: "Apparent power").value as? String, "100")
         capture("04-power-triangle")

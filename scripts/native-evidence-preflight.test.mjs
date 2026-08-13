@@ -428,6 +428,11 @@ test("the UI test target has a unique bundle, host dependency, scheme testable, 
       'staticText(labeled: "REAL POWER")',
       'element(labeled: "Real Power")',
     ],
+    ...["70.668", "kW", "100", "kVA"].map((label) => [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      `staticText(labeled: "${label}")`,
+      `element(labeled: "${label}")`,
+    ]),
   ];
 
   for (const [file, expected, replacement] of mutations) {
@@ -503,13 +508,21 @@ test("mode navigation uses an exact type-agnostic scoped query with swipe-requer
   );
 });
 
-test("AC and triangle scenes use the forensic static-text sentinels and real input values", () => {
+test("AC and triangle scenes use the forensic static-text labels, values, units, and inputs", () => {
   const uiTests = readFileSync(
     join(repositoryRoot, "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift"),
     "utf8",
   );
   assert.match(uiTests, /staticText\(labeled: "REAL POWER"\)\.waitForExistence/);
   assert.match(uiTests, /staticText\(labeled: "APPARENT POWER"\)\.waitForExistence/);
+  for (const label of ["70.668", "kW", "100", "kVA"]) {
+    assert.match(
+      uiTests,
+      new RegExp(
+        `XCTAssertTrue\\(staticText\\(labeled: "${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\)\\.exists`,
+      ),
+    );
+  }
   assert.doesNotMatch(uiTests, /element\(labeled: "(?:Real Power|Apparent Power)"\)/);
   assert.doesNotMatch(uiTests, /element\(labeled: "(?:70\.668|100|kW|kVA)"\)/);
   for (const [label, value] of [
