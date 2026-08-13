@@ -334,8 +334,8 @@ test("the evidence workflow pins Xcode, runtime, UDID destinations, and the rema
   )?.[0];
   assert.ok(evidence, "TrueOhm evidence workflow is missing");
   assert.match(evidence, /\n\s+xcode: 26\.4\s*\n/);
-  assert.match(evidence, /max_build_duration: 19/);
-  assert.equal(11 + 19 + 45 + 45, 120, "configured maxima must include the 11 minutes used");
+  assert.match(evidence, /max_build_duration: 12/);
+  assert.equal(18 + 12 + 45 + 45, 120, "configured maxima must include the 18 minutes used");
   assert.match(evidence, /resolve-simulators/);
   assert.match(evidence, /destination[^\n]*iphone/);
   assert.match(evidence, /destination[^\n]*ipad/);
@@ -428,6 +428,21 @@ test("the UI test target has a unique bundle, host dependency, scheme testable, 
       'staticText(labeled: "REAL POWER")',
       'element(labeled: "Real Power")',
     ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      "webView.waitForExistence(timeout: 30)",
+      "webView.waitForExistence(timeout: 20)",
+    ],
+    [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      'staticText(labeled: "POWER")',
+      'element(labeled: "Power")',
+    ],
+    ...["1,440", "watts"].map((label) => [
+      "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
+      `staticText(labeled: "${label}")`,
+      `element(labeled: "${label}")`,
+    ]),
     ...["70.668", "kW", "100", "kVA"].map((label) => [
       "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift",
       `staticText(labeled: "${label}")`,
@@ -458,6 +473,30 @@ test("each UI evidence scene forces portrait and explicitly rewrites persistent 
   ]) {
     assert.ok(uiTests.includes(required), `${label} is missing`);
   }
+});
+
+test("cold launch waits for the exact default Ohm's Law accessibility scene", () => {
+  const uiTests = readFileSync(
+    join(repositoryRoot, "apps/web/ios/App/TrueOhmEvidenceUITests/TrueOhmEvidenceUITests.swift"),
+    "utf8",
+  );
+  const setUp = uiTests.slice(
+    uiTests.indexOf("override func setUpWithError"),
+    uiTests.indexOf("override func tearDownWithError"),
+  );
+  assert.match(setUp, /webView\.waitForExistence\(timeout: 30\)/);
+  assert.match(setUp, /staticText\(labeled: "POWER"\)\.waitForExistence\(timeout: 15\)/);
+  assert.doesNotMatch(setUp, /element\(labeled: "Power"\)/);
+
+  const defaultScene = uiTests.slice(
+    uiTests.indexOf("private func assertDefaultOhmsLaw"),
+    uiTests.indexOf("private func resetPersistentEvidenceState"),
+  );
+  assert.match(defaultScene, /staticText\(labeled: "1,440"\)\.exists/);
+  assert.match(defaultScene, /staticText\(labeled: "watts"\)\.exists/);
+  assert.doesNotMatch(defaultScene, /element\(labeled: "(?:1,440|watts)"\)/);
+  assert.match(defaultScene, /textField\(labeled: "Voltage"\)\.value as\? String, "120"/);
+  assert.match(defaultScene, /textField\(labeled: "Resistance"\)\.value as\? String, "10"/);
 });
 
 test("mode navigation uses an exact type-agnostic scoped query with swipe-requery fallback", () => {
@@ -553,7 +592,7 @@ test("the manual workflow is unsigned, artifact-only, exact-device, and runs all
       "    publishing:\n      email:\n        recipients: []\n    artifacts:\n      - native-evidence/**/*",
     ],
     ["xcode: 26.4", "xcode: latest"],
-    ["max_build_duration: 19", "max_build_duration: 20"],
+    ["max_build_duration: 12", "max_build_duration: 13"],
     ['resolve-simulators "$EVIDENCE_DIR"', 'resolve-simulators "$CM_BUILD_DIR"'],
     [
       'destination "$CM_BUILD_DIR/native-evidence" iphone',

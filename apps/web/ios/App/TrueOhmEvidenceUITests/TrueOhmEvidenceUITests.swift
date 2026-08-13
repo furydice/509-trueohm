@@ -23,9 +23,9 @@ final class TrueOhmEvidenceUITests: XCTestCase {
             "Evidence capture must remain in portrait orientation"
         )
         let webView = app.webViews.firstMatch
-        XCTAssertTrue(webView.waitForExistence(timeout: 20), "TrueOhm web view did not launch")
+        XCTAssertTrue(webView.waitForExistence(timeout: 30), "TrueOhm web view did not launch")
         XCTAssertTrue(
-            element(labeled: "Power").waitForExistence(timeout: 15),
+            staticText(labeled: "POWER").waitForExistence(timeout: 15),
             "Default Ohm's Law result did not render"
         )
         resetPersistentEvidenceState()
@@ -94,8 +94,8 @@ final class TrueOhmEvidenceUITests: XCTestCase {
     }
 
     private func assertDefaultOhmsLaw() {
-        XCTAssertTrue(element(labeled: "1,440").exists, "Default Ohm's Law result is not 1,440 W")
-        XCTAssertTrue(element(labeled: "watts").exists, "Default Ohm's Law result unit is missing")
+        XCTAssertTrue(staticText(labeled: "1,440").exists, "Default Ohm's Law result is not 1,440 W")
+        XCTAssertTrue(staticText(labeled: "watts").exists, "Default Ohm's Law result unit is missing")
         XCTAssertEqual(textField(labeled: "Voltage").value as? String, "120")
         XCTAssertEqual(textField(labeled: "Resistance").value as? String, "10")
     }

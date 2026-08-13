@@ -224,6 +224,10 @@ export function auditRepository(root = repositoryRoot) {
     ["app.launch()", "deterministic app launch"],
     ["XCUIDevice.shared.orientation = .portrait", "portrait orientation lock"],
     ['"-ApplePersistenceIgnoreState", "YES"', "state-restoration reset"],
+    ["webView.waitForExistence(timeout: 30)", "cold WebView launch bound"],
+    ['staticText(labeled: "POWER")', "exact default-scene readiness sentinel"],
+    ['staticText(labeled: "1,440")', "default Ohm's Law result accessibility value"],
+    ['staticText(labeled: "watts")', "default Ohm's Law result accessibility unit"],
     ['button(labeled: "Switch to light mode")', "dark-theme state detection"],
     ['button(labeled: "Switch to dark mode")', "explicit persisted dark-theme action"],
     ['element(labeled: "Calculator mode")', "real calculator-mode switcher lookup"],
@@ -308,6 +312,9 @@ export function auditRepository(root = repositoryRoot) {
   if (/element\(labeled: "(?:70\.668|100|kW|kVA)"\)/.test(uiTests)) {
     errors.push("UI tests must query proven hero values and units through app.staticTexts");
   }
+  if (/element\(labeled: "(?:Power|1,440|watts)"\)/.test(uiTests)) {
+    errors.push("UI tests must query the exact default Ohm's Law scene through app.staticTexts");
+  }
 
   const codemagic = sources.get("codemagic.yaml");
   const auditWorkflow = extractWorkflow(codemagic, "trueohm-readonly-audit");
@@ -352,7 +359,7 @@ export function auditRepository(root = repositoryRoot) {
     for (const [expected, label] of [
       ["name: TrueOhm iOS Screenshot Evidence", "workflow display name"],
       ["xcode: 26.4", "pinned Xcode 26.4 image"],
-      ["max_build_duration: 19", "19-minute workflow cap"],
+      ["max_build_duration: 12", "12-minute workflow cap"],
       ["pnpm install --frozen-lockfile", "frozen install"],
       ["pnpm lint", "lint gate"],
       ["pnpm typecheck", "typecheck gate"],
@@ -391,9 +398,9 @@ export function auditRepository(root = repositoryRoot) {
     }
     const cap = Number(evidenceWorkflow.match(/max_build_duration:\s*(\d+)/)?.[1]);
     const approvedMinutes = 120;
-    const usedMinutes = 11;
+    const usedMinutes = 18;
     if (!Number.isInteger(cap) || usedMinutes + cap + 45 + 45 > approvedMinutes) {
-      errors.push("evidence workflow maxima plus 11 used minutes must fit the 120-minute approval");
+      errors.push("evidence workflow maxima plus 18 used minutes must fit the 120-minute approval");
     }
     if (/-destination ['"]platform=iOS Simulator,name=/.test(evidenceWorkflow)) {
       errors.push("evidence workflow must not select simulators by ambiguous device name");
