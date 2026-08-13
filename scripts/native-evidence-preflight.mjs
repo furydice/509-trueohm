@@ -26,9 +26,64 @@ const frameNames = [
 ];
 
 export const deviceContracts = {
-  iphone: { name: "iPhone 16 Pro Max", width: 1320, height: 2868 },
-  ipad: { name: "iPad Pro 13-inch (M4)", width: 2064, height: 2752 },
+  iphone: { name: "iPhone 17 Pro Max", width: 1320, height: 2868 },
+  ipad: { name: "iPad Pro 13-inch (M5)", width: 2064, height: 2752 },
 };
+
+export const simulatorRuntime = "com.apple.CoreSimulator.SimRuntime.iOS-26-4";
+
+export function resolveSimulatorContracts(
+  inventory,
+  contracts = deviceContracts,
+  runtime = simulatorRuntime,
+) {
+  const runtimeDevices = inventory?.devices?.[runtime];
+  if (!Array.isArray(runtimeDevices)) {
+    throw new Error(`Simulator inventory is missing pinned runtime ${runtime}`);
+  }
+  const resolved = {};
+  for (const [key, contract] of Object.entries(contracts)) {
+    const matches = runtimeDevices.filter(
+      (device) => device.name === contract.name && device.isAvailable !== false,
+    );
+    if (matches.length !== 1) {
+      throw new Error(
+        `Expected exactly one available ${contract.name} in iOS 26.4; found ${matches.length}`,
+      );
+    }
+    const udid = matches[0].udid;
+    if (typeof udid !== "string" || udid.length === 0) {
+      throw new Error(`${contract.name} in iOS 26.4 is missing its UDID`);
+    }
+    resolved[key] = { ...contract, udid, runtime };
+  }
+  return resolved;
+}
+
+export function writeSimulatorContracts(root) {
+  const inventory = JSON.parse(decodeFile(join(root, "simulators.json")));
+  const resolved = resolveSimulatorContracts(inventory);
+  writeFileSync(join(root, "simulator-contract.json"), `${JSON.stringify(resolved, null, 2)}\n`);
+  return resolved;
+}
+
+export function simulatorDestination(root, device) {
+  if (!(device in deviceContracts)) throw new Error(`unknown simulator contract: ${device}`);
+  const resolved = JSON.parse(decodeFile(join(root, "simulator-contract.json")));
+  const contract = resolved[device];
+  const expected = deviceContracts[device];
+  if (
+    contract?.name !== expected.name ||
+    contract?.width !== expected.width ||
+    contract?.height !== expected.height ||
+    contract?.runtime !== simulatorRuntime ||
+    typeof contract?.udid !== "string" ||
+    contract.udid.length === 0
+  ) {
+    throw new Error(`${device} simulator contract does not match the pinned runtime and device`);
+  }
+  return `platform=iOS Simulator,id=${contract.udid}`;
+}
 
 const requiredRepositoryFiles = [
   "codemagic.yaml",
@@ -225,7 +280,8 @@ export function auditRepository(root = repositoryRoot) {
     }
     for (const [expected, label] of [
       ["name: TrueOhm iOS Screenshot Evidence", "workflow display name"],
-      ["max_build_duration: 30", "30-minute workflow cap"],
+      ["xcode: 26.4", "pinned Xcode 26.4 image"],
+      ["max_build_duration: 29", "29-minute workflow cap"],
       ["pnpm install --frozen-lockfile", "frozen install"],
       ["pnpm lint", "lint gate"],
       ["pnpm typecheck", "typecheck gate"],
@@ -233,10 +289,11 @@ export function auditRepository(root = repositoryRoot) {
       ["pnpm build", "build gate"],
       ["node scripts/native-evidence-preflight.mjs", "native contract gate"],
       ["npx cap sync ios", "Capacitor sync"],
-      ["name=iPhone 16 Pro Max", "exact iPhone 16 Pro Max destination"],
-      ["name=iPad Pro 13-inch (M4)", "exact iPad Pro 13-inch destination"],
-      ["1320 x 2868", "exact iPhone screenshot dimensions"],
-      ["2064 x 2752", "exact iPad screenshot dimensions"],
+      ['resolve-simulators "$EVIDENCE_DIR"', "runtime-scoped simulator resolution"],
+      ['destination "$CM_BUILD_DIR/native-evidence" iphone', "resolved iPhone destination"],
+      ['destination "$CM_BUILD_DIR/native-evidence" ipad', "resolved iPad destination"],
+      ['-destination "$IPHONE_DESTINATION"', "iPhone UDID destination use"],
+      ['-destination "$IPAD_DESTINATION"', "iPad UDID destination use"],
       ["trueohm-iphone.xcresult", "iPhone result bundle"],
       ["trueohm-ipad.xcresult", "iPad result bundle"],
       ["CODE_SIGNING_ALLOWED=NO", "unsigned simulator build"],
@@ -260,6 +317,13 @@ export function auditRepository(root = repositoryRoot) {
       count(evidenceWorkflow, /xcodebuild test -project apps\/web\/ios\/App\/App\.xcodeproj/g) !== 2
     ) {
       errors.push("evidence workflow must run exactly two native UI-test commands");
+    }
+    const cap = Number(evidenceWorkflow.match(/max_build_duration:\s*(\d+)/)?.[1]);
+    if (!Number.isInteger(cap) || cap + 45 + 45 > 119) {
+      errors.push("evidence workflow maxima must fit the remaining 119 approved macOS minutes");
+    }
+    if (/-destination ['"]platform=iOS Simulator,name=/.test(evidenceWorkflow)) {
+      errors.push("evidence workflow must not select simulators by ambiguous device name");
     }
   }
 
@@ -500,8 +564,7 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
       actual.height !== expected.height ||
       typeof actual.udid !== "string" ||
       actual.udid.length === 0 ||
-      typeof actual.runtime !== "string" ||
-      actual.runtime.length === 0
+      actual.runtime !== simulatorRuntime
     ) {
       throw new Error(`${device} simulator contract does not match the exact reviewed device`);
     }
@@ -627,7 +690,22 @@ export function materializeNativeEvidence(evidenceRoot, contracts = deviceContra
 }
 
 function runCli() {
-  const [command, argument] = process.argv.slice(2);
+  const [command, argument, device] = process.argv.slice(2);
+  if (command === "resolve-simulators") {
+    if (!argument)
+      throw new Error("usage: native-evidence-preflight.mjs resolve-simulators <evidence-root>");
+    const resolved = writeSimulatorContracts(argument);
+    console.log(`simulator contract resolved: ${Object.keys(resolved).join(", ")}`);
+    return;
+  }
+  if (command === "destination") {
+    if (!argument || !device)
+      throw new Error(
+        "usage: native-evidence-preflight.mjs destination <evidence-root> <iphone|ipad>",
+      );
+    console.log(simulatorDestination(argument, device));
+    return;
+  }
   if (command === "materialize") {
     if (!argument)
       throw new Error("usage: native-evidence-preflight.mjs materialize <evidence-root>");

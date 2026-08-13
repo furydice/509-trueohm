@@ -50,14 +50,14 @@ workflows:
   trueohm-ios-screenshot-evidence:
     name: TrueOhm iOS Screenshot Evidence
     instance_type: mac_mini_m2
-    max_build_duration: 30
+    max_build_duration: 29
     labels:
       - artifact-only
       - ios-simulator
       - manual
       - trueohm
     environment:
-      xcode: latest
+      xcode: 26.4
       node: 24
       cocoapods: default
       vars:
@@ -96,39 +96,17 @@ workflows:
           git rev-parse HEAD > "$EVIDENCE_DIR/source-sha.txt"
           xcodebuild -version | tee "$EVIDENCE_DIR/xcode-version.txt"
           xcrun simctl list devices available --json > "$EVIDENCE_DIR/simulators.json"
-          EVIDENCE_DIR="$EVIDENCE_DIR" node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from "node:fs";
-          import { join } from "node:path";
-
-          const root = process.env.EVIDENCE_DIR;
-          const inventory = JSON.parse(readFileSync(join(root, "simulators.json"), "utf8"));
-          const specs = {
-            iphone: { name: "iPhone 16 Pro Max", width: 1320, height: 2868, display: "1320 x 2868" },
-            ipad: { name: "iPad Pro 13-inch (M4)", width: 2064, height: 2752, display: "2064 x 2752" },
-          };
-          const resolved = {};
-          for (const [key, spec] of Object.entries(specs)) {
-            const matches = Object.entries(inventory.devices ?? {}).flatMap(([runtime, devices]) =>
-              devices
-                .filter((device) => device.name === spec.name && device.isAvailable !== false)
-                .map((device) => ({ ...spec, udid: device.udid, runtime })),
-            );
-            if (matches.length !== 1) {
-              throw new Error(`Expected exactly one available ${spec.name}; found ${matches.length}`);
-            }
-            const { display: _display, ...record } = matches[0];
-            resolved[key] = record;
-          }
-          writeFileSync(join(root, "simulator-contract.json"), `${JSON.stringify(resolved, null, 2)}\n`);
-          NODE
+          node scripts/native-evidence-preflight.mjs resolve-simulators "$EVIDENCE_DIR"
       - name: Capture five iPhone frames into an xcresult bundle
         script: |
           set -euo pipefail
-          xcodebuild test -project apps/web/ios/App/App.xcodeproj -scheme App -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16 Pro Max' -resultBundlePath "$CM_BUILD_DIR/native-evidence/trueohm-iphone.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$CM_BUILD_DIR/native-evidence/logs/iphone-xcodebuild.log"
+          IPHONE_DESTINATION="$(node scripts/native-evidence-preflight.mjs destination "$CM_BUILD_DIR/native-evidence" iphone)"
+          xcodebuild test -project apps/web/ios/App/App.xcodeproj -scheme App -configuration Debug -destination "$IPHONE_DESTINATION" -resultBundlePath "$CM_BUILD_DIR/native-evidence/trueohm-iphone.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$CM_BUILD_DIR/native-evidence/logs/iphone-xcodebuild.log"
       - name: Capture five iPad frames into an xcresult bundle
         script: |
           set -euo pipefail
-          xcodebuild test -project apps/web/ios/App/App.xcodeproj -scheme App -configuration Debug -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' -resultBundlePath "$CM_BUILD_DIR/native-evidence/trueohm-ipad.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$CM_BUILD_DIR/native-evidence/logs/ipad-xcodebuild.log"
+          IPAD_DESTINATION="$(node scripts/native-evidence-preflight.mjs destination "$CM_BUILD_DIR/native-evidence" ipad)"
+          xcodebuild test -project apps/web/ios/App/App.xcodeproj -scheme App -configuration Debug -destination "$IPAD_DESTINATION" -resultBundlePath "$CM_BUILD_DIR/native-evidence/trueohm-ipad.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$CM_BUILD_DIR/native-evidence/logs/ipad-xcodebuild.log"
       - name: Export, validate, name, and hash screenshot evidence
         script: |
           set -euo pipefail

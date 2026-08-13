@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
@@ -152,9 +154,50 @@ const frameNames = [
 ];
 
 const testDeviceContracts = {
-  iphone: { name: "iPhone 16 Pro Max", width: 20, height: 40 },
-  ipad: { name: "iPad Pro 13-inch (M4)", width: 30, height: 40 },
+  iphone: { name: "iPhone 17 Pro Max", width: 20, height: 40 },
+  ipad: { name: "iPad Pro 13-inch (M5)", width: 30, height: 40 },
 };
+
+const pinnedSimulatorRuntime = "com.apple.CoreSimulator.SimRuntime.iOS-26-4";
+
+function simulatorInventory({ duplicatePinnedIphone = false } = {}) {
+  const pinnedDevices = [
+    {
+      name: "iPhone 17 Pro Max",
+      udid: "PINNED-PHONE-UDID",
+      isAvailable: true,
+    },
+    {
+      name: "iPad Pro 13-inch (M5)",
+      udid: "PINNED-IPAD-UDID",
+      isAvailable: true,
+    },
+  ];
+  if (duplicatePinnedIphone) {
+    pinnedDevices.push({
+      name: "iPhone 17 Pro Max",
+      udid: "DUPLICATE-PHONE-UDID",
+      isAvailable: true,
+    });
+  }
+  return {
+    devices: {
+      "com.apple.CoreSimulator.SimRuntime.iOS-26-3": [
+        {
+          name: "iPhone 17 Pro Max",
+          udid: "STALE-PHONE-UDID",
+          isAvailable: true,
+        },
+        {
+          name: "iPad Pro 13-inch (M5)",
+          udid: "STALE-IPAD-UDID",
+          isAvailable: true,
+        },
+      ],
+      [pinnedSimulatorRuntime]: pinnedDevices,
+    },
+  };
+}
 
 function makeEvidenceFixture(t, { identicalScenes = false, uniqueMetadata = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "trueohm-native-artifacts-"));
@@ -165,12 +208,20 @@ function makeEvidenceFixture(t, { identicalScenes = false, uniqueMetadata = fals
   writeFileSync(join(root, "logs", "iphone-xcodebuild.log"), "iphone test passed\n");
   writeFileSync(join(root, "logs", "ipad-xcodebuild.log"), "ipad test passed\n");
   writeFileSync(join(root, "source-sha.txt"), `${"a".repeat(40)}\n`);
-  writeFileSync(join(root, "xcode-version.txt"), "Xcode 16.4\nBuild version 16F6\n");
+  writeFileSync(join(root, "xcode-version.txt"), "Xcode 26.4.1\nBuild version 17E202\n");
   writeFileSync(
     join(root, "simulator-contract.json"),
     `${JSON.stringify({
-      iphone: { ...testDeviceContracts.iphone, udid: "PHONE-UDID", runtime: "iOS-18-5" },
-      ipad: { ...testDeviceContracts.ipad, udid: "IPAD-UDID", runtime: "iOS-18-5" },
+      iphone: {
+        ...testDeviceContracts.iphone,
+        udid: "PHONE-UDID",
+        runtime: pinnedSimulatorRuntime,
+      },
+      ipad: {
+        ...testDeviceContracts.ipad,
+        udid: "IPAD-UDID",
+        runtime: pinnedSimulatorRuntime,
+      },
     })}\n`,
   );
 
@@ -198,6 +249,98 @@ function makeEvidenceFixture(t, { identicalScenes = false, uniqueMetadata = fals
   }
   return root;
 }
+
+test("simulator resolution ignores duplicate successor names outside the pinned iOS 26.4 runtime", () => {
+  const resolveSimulatorContracts = requireExport("resolveSimulatorContracts");
+  assert.deepEqual(resolveSimulatorContracts(simulatorInventory()), {
+    iphone: {
+      name: "iPhone 17 Pro Max",
+      width: 1320,
+      height: 2868,
+      udid: "PINNED-PHONE-UDID",
+      runtime: pinnedSimulatorRuntime,
+    },
+    ipad: {
+      name: "iPad Pro 13-inch (M5)",
+      width: 2064,
+      height: 2752,
+      udid: "PINNED-IPAD-UDID",
+      runtime: pinnedSimulatorRuntime,
+    },
+  });
+});
+
+test("simulator resolution fails closed on duplicates inside the pinned runtime", () => {
+  const resolveSimulatorContracts = requireExport("resolveSimulatorContracts");
+  assert.throws(
+    () => resolveSimulatorContracts(simulatorInventory({ duplicatePinnedIphone: true })),
+    /exactly one.*iPhone 17 Pro Max.*iOS 26\.4|iPhone 17 Pro Max.*found 2/i,
+  );
+});
+
+test("the resolver CLI writes the pinned contract and emits xcodebuild destinations by UDID", (t) => {
+  const evidenceRoot = mkdtempSync(join(tmpdir(), "trueohm-simulator-resolution-"));
+  t.after(() => rmSync(evidenceRoot, { recursive: true, force: true }));
+  writeFileSync(join(evidenceRoot, "simulators.json"), `${JSON.stringify(simulatorInventory())}\n`);
+
+  const resolveResult = spawnSync(
+    process.execPath,
+    [fileURLToPath(moduleUrl), "resolve-simulators", evidenceRoot],
+    { encoding: "utf8" },
+  );
+  assert.equal(resolveResult.status, 0, resolveResult.stderr);
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(evidenceRoot, "simulator-contract.json"), "utf8")),
+    resolveSimulatorContractFixture(),
+  );
+
+  for (const [device, udid] of [
+    ["iphone", "PINNED-PHONE-UDID"],
+    ["ipad", "PINNED-IPAD-UDID"],
+  ]) {
+    const destinationResult = spawnSync(
+      process.execPath,
+      [fileURLToPath(moduleUrl), "destination", evidenceRoot, device],
+      { encoding: "utf8" },
+    );
+    assert.equal(destinationResult.status, 0, destinationResult.stderr);
+    assert.equal(destinationResult.stdout.trim(), `platform=iOS Simulator,id=${udid}`);
+  }
+});
+
+function resolveSimulatorContractFixture() {
+  return {
+    iphone: {
+      name: "iPhone 17 Pro Max",
+      width: 1320,
+      height: 2868,
+      udid: "PINNED-PHONE-UDID",
+      runtime: pinnedSimulatorRuntime,
+    },
+    ipad: {
+      name: "iPad Pro 13-inch (M5)",
+      width: 2064,
+      height: 2752,
+      udid: "PINNED-IPAD-UDID",
+      runtime: pinnedSimulatorRuntime,
+    },
+  };
+}
+
+test("the evidence workflow pins Xcode, runtime, UDID destinations, and the remaining minute cap", () => {
+  const codemagic = readFileSync(join(repositoryRoot, "codemagic.yaml"), "utf8");
+  const evidence = codemagic.match(
+    / {2}trueohm-ios-screenshot-evidence:[\s\S]*?(?=\n {2}trueohm-ios-testflight:)/,
+  )?.[0];
+  assert.ok(evidence, "TrueOhm evidence workflow is missing");
+  assert.match(evidence, /\n\s+xcode: 26\.4\s*\n/);
+  assert.match(evidence, /max_build_duration: 29/);
+  assert.ok(29 + 45 + 45 <= 119, "configured evidence maxima exceed remaining approval");
+  assert.match(evidence, /resolve-simulators/);
+  assert.match(evidence, /destination[^\n]*iphone/);
+  assert.match(evidence, /destination[^\n]*ipad/);
+  assert.doesNotMatch(evidence, /-destination ['"]platform=iOS Simulator,name=/);
+});
 
 test("the checked-in repository satisfies the complete native evidence contract", () => {
   const auditRepository = requireExport("auditRepository");
@@ -298,10 +441,25 @@ test("the manual workflow is unsigned, artifact-only, exact-device, and runs all
       "    artifacts:\n      - native-evidence/**/*",
       "    publishing:\n      email:\n        recipients: []\n    artifacts:\n      - native-evidence/**/*",
     ],
-    ["name=iPhone 16 Pro Max", "name=iPhone 16"],
-    ["name=iPad Pro 13-inch (M4)", "name=iPad Pro 11-inch (M4)"],
-    ["1320 x 2868", "1290 x 2796"],
-    ["2064 x 2752", "2048 x 2732"],
+    ["xcode: 26.4", "xcode: latest"],
+    ["max_build_duration: 29", "max_build_duration: 30"],
+    ['resolve-simulators "$EVIDENCE_DIR"', 'resolve-simulators "$CM_BUILD_DIR"'],
+    [
+      'destination "$CM_BUILD_DIR/native-evidence" iphone',
+      'destination "$CM_BUILD_DIR/native-evidence" unknown',
+    ],
+    [
+      'destination "$CM_BUILD_DIR/native-evidence" ipad',
+      'destination "$CM_BUILD_DIR/native-evidence" unknown',
+    ],
+    [
+      '-destination "$IPHONE_DESTINATION"',
+      "-destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'",
+    ],
+    [
+      '-destination "$IPAD_DESTINATION"',
+      "-destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'",
+    ],
     ["xcrun xcresulttool export attachments", "echo xcresulttool export attachments"],
     ["git diff --exit-code", "echo git diff --exit-code"],
     ["pnpm storefront:preflight", "echo pnpm storefront:preflight"],
@@ -429,6 +587,20 @@ test("materialization maps exactly five attachments per device and writes hashes
       );
     }
     assert.deepEqual(JSON.parse(readFileSync(join(root, "manifest.json"), "utf8")), manifest);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("materialization rejects a simulator contract from outside the pinned iOS 26.4 runtime", () => {
+  const materializeNativeEvidence = requireExport("materializeNativeEvidence");
+  const root = makeEvidenceFixture({ after: () => {} });
+  try {
+    const path = join(root, "simulator-contract.json");
+    const contract = JSON.parse(readFileSync(path, "utf8"));
+    contract.iphone.runtime = "com.apple.CoreSimulator.SimRuntime.iOS-26-3";
+    writeFileSync(path, `${JSON.stringify(contract)}\n`);
+    assert.throws(() => materializeNativeEvidence(root, testDeviceContracts), /runtime|reviewed/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
