@@ -217,15 +217,13 @@ workflows:
       - android
       - trueohm
     environment:
-      java: 17
+      java: 21
       node: 24
+      android_signing:
+        - trueohm_upload_keystore
       vars:
         PNPM_STORE_PATH: $CM_BUILD_DIR/.pnpm-store
-        # Release-AAB signing: create an Android keystore in Codemagic
-        # (Teams > Code signing identities > Android keystores) and add an
-        # `android_signing:` block referencing it to sign the release bundle for
-        # Play upload. Until then this builds an UNSIGNED release AAB, which
-        # validates the whole Android compile plus an installable debug APK.
+        # Release AAB is signed via android_signing above (trueohm_upload_keystore).
     cache:
       cache_paths:
         - $CM_BUILD_DIR/.pnpm-store
