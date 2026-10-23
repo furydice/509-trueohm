@@ -15,3 +15,4 @@ coverage/
 *.tsbuildinfo
 dist-ts/
 scripts/.release/
+output/playwright/
