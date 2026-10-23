@@ -439,7 +439,8 @@ p {
   background: var(--surface-2);
   padding: 8px 12px;
   font-family: var(--font-mono);
-  font-size: 15px;
+  /* Prevent iOS focus zoom while allowing larger user text sizes. */
+  font-size: max(16px, 1rem);
   font-weight: 700;
   text-align: right;
 }
